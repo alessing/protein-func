@@ -1,0 +1,15 @@
+name: protein-func
+channels:
+  - defaults
+  - conda-forge
+dependencies:
+  - python=3.10
+  - numpy
+  - pandas
+  - pytorch
+  - pyg
+  - pip
+  - pip:
+    - biopython
+    - matplotlib
+    - networkx
