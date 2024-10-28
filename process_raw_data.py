@@ -44,8 +44,9 @@ def main():
     data = data[data["DB_Object_Type"] == "protein"]  #  Only keep annotations detailing proteins
     for qual in set(data["Qualifier"]):
         print(f'{qual}: {len(data[data["Qualifier"] == qual])}')
+    data["Qualifier_Idx"] = data["Qualifier"].apply(lambda x: 0 if x == "enables" else (1 if x == "contributes_to" else 2))
 
-    protein_df = data.groupby("DB_Object_ID").agg({"Qualifier": list, "GO_ID": list}).reset_index()
+    protein_df = data.groupby("DB_Object_ID").agg({"Qualifier_Idx": list, "GO_ID": list}).reset_index()
 
     # Make Idx columns from Id columns
     go_id_set = set()
