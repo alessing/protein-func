@@ -13,3 +13,4 @@ dependencies:
     - biopython
     - matplotlib
     - networkx
+    - h5py

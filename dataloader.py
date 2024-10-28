@@ -76,6 +76,9 @@ def create_fake_dataloader(num_proteins=100):
 
     return DataLoader(protein_datas, batch_size=4)
 
+
+
+
 if __name__ == '__main__':
     dl = create_fake_dataloader()
 
