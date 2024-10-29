@@ -5,6 +5,7 @@ channels:
 dependencies:
   - python=3.10
   - numpy
+  - h5py
   - pandas
   - pytorch
   - pyg

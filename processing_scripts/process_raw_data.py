@@ -1,6 +1,5 @@
 import pandas as pd
 import matplotlib.pyplot as plt
-import ast
 
 RAW_DATA = "data/raw_data"
 PLOT_DIR = "data/plots"
