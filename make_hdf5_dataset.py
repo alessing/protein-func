@@ -24,6 +24,13 @@ PERIODIC_TABLE_IDX = {
     'Rg': 110, 'Cn': 111, 'Nh': 112, 'Fl': 113, 'Mc': 114, 'Lv': 115, 'Ts': 116, 'Og': 117
 }
 
+def adjacency_features(adj_matrix, D):
+    structure_features = np.ones((adj_matrix.shape[0], D))
+    for d in range(1, D):
+        structure_features[d] = np.diag(np.linalg.matrix_power(adj_matrix, d))
+    return structure_features
+
+
 def save_hdf5(filename, protein_funcs, parser):
     uniprot_id = filename.split("-")[1]
     protein_data = protein_funcs[protein_funcs["DB_Object_ID"] == uniprot_id]
@@ -39,7 +46,7 @@ def save_hdf5(filename, protein_funcs, parser):
             atom_type.append(PERIODIC_TABLE_IDX[atom.element])
         pos = np.array(pos)
         atom_type = np.array(atom_type)
-        
+
         adj_feats = np.random.uniform(low=0.1, high=20, size=(num_atoms,))  # TODO
         edge_index = np.random.randint(low=0, high=num_atoms, size=(2, num_atoms))  # TODO
 
