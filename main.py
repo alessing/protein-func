@@ -94,7 +94,7 @@ class EarlyStopper:
 
 def main():
     num_tasks = 1000
-    model = FuncGNN(10, 11, 1, 32, 32, 32, 3)
+    model = FuncGNN(10, 11, 0, 64, 64, 1000, 3)
 
     protein_data, dl = create_fake_dataloader(num_tasks)
 
@@ -195,13 +195,14 @@ def train(model, optimizer, epoch, loader):
         x = data.pos
         edge_index = data.edge_index
         tasks_indices = data.task_indices
+        labels = data.labels
         edge_attr = None
         batch = data.batch
-        print(tasks_indices[:, 0][:10], tasks_indices[:, 1][:10])
+        # print(tasks_indices[:, 0][:10], tasks_indices[:, 1][:10])
         # breakpoint()
-        task_idxs = tasks_indices[:, 0]
+        # task_idxs = tasks_indices[:, 0]
 
-        model(h, x, edge_index, edge_attr, batch, task_idx)
+        model(h, x, edge_index, edge_attr, batch, tasks_indices, labels)
 
         # protein label is associated with (index), 2nd is actual label
 

@@ -279,7 +279,7 @@ class E_GCL(nn.Module):
             return h, coord, edge_attr
         else:
             # TODO: might need to change this so we include an MLP after extracting messages
-            return edge_feat
+            return h
 
 
 class E_GCL_vel(E_GCL):

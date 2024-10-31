@@ -60,7 +60,7 @@ def create_fake_dataloader(num_proteins=100, num_tasks=1000):
         structure_features = torch.rand((num_atoms, 10))
 
         # num_tasks = int(np.random.exponential(10.0)) + 1
-        task_indices = torch.randint(1, 20000, (num_tasks, 2), dtype=torch.long)
+        task_indices = torch.randint(0, num_tasks, (num_tasks, 2), dtype=torch.long)
         # task_indices = torch.randint(1, num_functio, (num_tasks, 2), dtype=torch.long)
         labels = torch.randint_like(task_indices, low=0, high=2)
 

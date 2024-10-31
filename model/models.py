@@ -174,12 +174,12 @@ class E3Pooling(nn.Module):
         else:
             n_node_attr = 0
 
-        self.e3_backbone = E_GCL_mask(
+        self.e3_backbone = E_GCL(
             self.hidden_dim,
             self.hidden_dim,
             self.hidden_dim,
             edges_in_d=in_edge_nf,
-            nodes_attr_dim=n_node_attr,
+            nodes_att_dim=n_node_attr,
             act_fn=act_fn,
             recurrent=True,
             coords_weight=coords_weight,
@@ -189,7 +189,7 @@ class E3Pooling(nn.Module):
         self.pool = global_mean_pool
 
     def forward(self, h, edge_index, x, edge_attr=None, batch=None):
-        h = self.e3_backbone(h, edge_index, x, edge_attr=edge_attr, batch=batch)
+        h = self.e3_backbone(h, edge_index, x, edge_attr=edge_attr)
         # If h is (B, N, d), take the mean across atoms
         # p = h.mean(dim=1)
         p = self.pool(h, batch)
@@ -209,31 +209,91 @@ class FuncGNN(nn.Module):
         num_classes=3,
     ):
         super().__init__()
-        self.egnns = nn.ModuleList(
-            [
-                EGNN(in_node_nf=feature_dim, in_edge_nf=edge_dim, hidden_nf=hidden_dim)
-                for _ in range(num_equivariant_layers)
-            ]
-        )
-        self.softmax = nn.Softmax(dim=-1)
+
+        egnns = [
+            EGNN(in_node_nf=feature_dim, in_edge_nf=edge_dim, hidden_nf=hidden_dim)
+        ]
+        for _ in range(num_equivariant_layers - 1):
+            egnns.append(
+                EGNN(in_node_nf=hidden_dim, in_edge_nf=edge_dim, hidden_nf=hidden_dim)
+            )
+        # self.egnns = nn.ModuleList(
+        #     [
+        #         EGNN(in_node_nf=feature_dim, in_edge_nf=edge_dim, hidden_nf=hidden_dim)
+        #         for _ in range(num_equivariant_layers)
+        #     ]
+        # )
+        self.egnns = nn.ModuleList(egnns)
+
+        # self.softmax = nn.Softmax(dim=-1)
         self.pooling = E3Pooling(feature_dim, edge_dim, hidden_dim)
 
         # produces W[p, t] + b where p is the pooled message
-        self.linear = nn.Linear(hidden_dim + task_embed_dim, num_classes)
+        # TODO: CHANGE TO MLP
+        self.mlp = nn.Linear(hidden_dim + task_embed_dim, num_classes)
 
         # task embedding vector (size num_tasks)
-        self.tasks_embed = nn.Parameter(torch.rand(num_tasks, task_embed_dim))
+        # self.tasks_embed = nn.Parameter(torch.rand(num_tasks, task_embed_dim))
+        # TODO: Use Embedding here
+        self.tasks_embed = nn.Embedding(num_tasks, task_embed_dim)
 
-    def forward(self, h, x, edge_index, edge_attr, batch, task_idx):
+    def forward(self, h, x, edge_index, edge_attr, batch, tasks_indices, labels):
         # Apply E(3)-equivariant layers
         for egnn in self.egnns:
             h, x = egnn(h, x, edge_index, edge_attr)
 
         # Apply E(3)-invariant pooling layer to get pooled message
+        # Shape (B, hidden_dim) or (B, 64)
         p = self.pooling(h, edge_index, x, edge_attr=edge_attr, batch=batch)
+        print(f"p: {p.shape}")
 
-        head = self.linear(torch.cat((p, self.tasks_embed[task_idx, :]), dim=-1))
+        # iterate over each p in batch
+        B = p.size(0)
+        print(len(tasks_indices[:, 0]))
+        print(tasks_indices[:, 0][-10:])
+        # unique_protein_idxs, inverse_idxs = torch.unique(
+        #     tasks_indices[:, 0], return_inverse=True, sorted=False
+        # )
+        protein_idxs = tasks_indices[:, 0]
+        unique_protein_idxs = torch.unique(tasks_indices[:, 0])
+        task_idxs = tasks_indices[:, 1]
+        for b in range(B):
+            protein_idx = unique_protein_idxs[b]
+            mask = protein_idxs == protein_idx
+            # task indices corresponding to protein protein_idx
+            task_idxs_for_protein = task_idxs[mask]
+            # get the task embeddings for these indices
+            task_embeddings_for_protein = self.tasks_embed(task_idxs_for_protein)
 
-        y = self.softmax(head)
+            # concatenate them to the prediction for protein protein_idx
+            # need to tile the prediction for protein_idx (len of task_idxs_for_protein times)
+            # (hidden_dim) -> (num_tasks_for_protein, hidden_dim)
+            P = p[b].repeat(len(task_idxs_for_protein), 1)
+
+            # Concatenate P (num_tasks_for_protein, hidden_dim) to task_embeddings_for_protein (num_tasks_for_protein, task_embed_dim)
+            # to get (num_tasks_for_protein, hidden_dim + task_embed_dim)
+            PT = torch.cat((P, task_embeddings_for_protein), dim=-1)
+            y_pred = self.mlp(PT)
+
+            # ground truth
+            y = labels[:, 1][mask]
+            ce_loss = torch.nn.CrossEntropyLoss()
+            protein_loss = ce_loss(y_pred, y)
+            print(f"Protein loss: {protein_loss}")
+
+            breakpoint()
+
+        # print(torch.unique(tasks_indices[:, 0]))
+        # # print(tasks_indices[:, 1][:10])
+        # breakpoint()
+        # unique_protein = torch.unique(tasks_indices[:, 1])
+        # print(unique_protein[:10])
+        # breakpoint()
+        # for b in range(B):
+
+        # head = self.linear(torch.cat((p, self.tasks_embed[task_idx, :]), dim=-1))
+        # head = self.linear(torch.cat((p, self.tasks_embed[task_idx, :]), dim=-1))
+
+        # y = self.softmax(head)
 
         return y
