@@ -107,12 +107,12 @@ class EGNN(nn.Module):
         for i in range(0, n_layers):
             self.add_module(
                 "gcl_%d" % i,
-                E_GCL_mask(
+                E_GCL(
                     self.hidden_nf,
                     self.hidden_nf,
                     self.hidden_nf,
                     edges_in_d=in_edge_nf,
-                    nodes_attr_dim=n_node_attr,
+                    nodes_att_dim=n_node_attr,
                     act_fn=act_fn,
                     recurrent=True,
                     coords_weight=coords_weight,
@@ -133,7 +133,7 @@ class EGNN(nn.Module):
         )
         self.to(self.device)
 
-    def forward(self, h0, x, edge_index, edge_attr, node_mask, edge_mask, n_nodes):
+    def forward(self, h0, x, edge_index, edge_attr):
         h = self.embedding(h0)
         for i in range(0, self.n_layers):
             if self.node_attr:
@@ -141,22 +141,16 @@ class EGNN(nn.Module):
                     h,
                     edge_index,
                     x,
-                    node_mask,
-                    edge_mask,
                     edge_attr=edge_attr,
                     node_attr=h0,
-                    n_nodes=n_nodes,
                 )
             else:
                 h, x, _ = self._modules["gcl_%d" % i](
                     h,
                     edge_index,
                     x,
-                    node_mask,
-                    edge_mask,
                     edge_attr=edge_attr,
                     node_attr=None,
-                    n_nodes=n_nodes,
                 )
 
         return h, x

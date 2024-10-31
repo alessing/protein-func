@@ -190,14 +190,16 @@ def train(model, optimizer, epoch, loader):
     for data in tqdm(loader):
         # B = batch_size, N = n_nodes, L = seq_len, n = 3
         print(data)
-        # data.edge_index, data.pos, data.atom_types, data.structure_features
 
-        # print(data.atom_types.shape)
-        # breakpoint()
         h = torch.cat((data.atom_types.view(-1, 1), data.structure_features), dim=-1)
         x = data.pos
         edge_index = data.edge_index
         tasks_indices = data.task_indices
+        edge_attr = None
+        batch = data.batch
+        print(tasks_indices[:, 0][:10], tasks_indices[:, 1][:10])
+        # breakpoint()
+        task_idxs = tasks_indices[:, 0]
 
         model(h, x, edge_index, edge_attr, batch, task_idx)
 
