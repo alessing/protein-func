@@ -2,3 +2,4 @@ data/raw_data/*
 data/processed_data/protein_inputs/*
 .DS_Store
 */.DS_Store
+__pycache__/
