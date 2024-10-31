@@ -4,13 +4,15 @@ from torch_geometric.loader import DataLoader
 import networkx as nx
 import numpy as np
 
+np.random.seed(42)
+
 
 def generate_random_graph(num_nodes, edge_prob):
     """
     Generates a random connected graph with no bipartite components and returns:
     - A list of edges where each edge is represented by a tuple of node indices
     - The edge_index in PyTorch Geometric format
-    
+
     Parameters:
         num_nodes (int): The number of nodes in the graph.
         edge_prob (float): The probability of an edge between any two nodes (Erdős-Rényi model).
@@ -22,18 +24,18 @@ def generate_random_graph(num_nodes, edge_prob):
     # Step 1: Generate a random connected graph with no bipartite components
     # Generate a random graph using Erdős-Rényi model
     G = nx.erdos_renyi_graph(num_nodes, edge_prob)
-    
+
     # Check if the graph is connected and non-bipartite
     if not nx.is_connected(G):
         # Step 2: Find all connected components
         components = list(nx.connected_components(G))
-        
+
         # Step 3: Add edges between the components to connect them
         for i in range(len(components) - 1):
             # Take one node from the current component and one from the next
             node_from_comp1 = next(iter(components[i]))
             node_from_comp2 = next(iter(components[i + 1]))
-            
+
             # Add an edge between them
             G.add_edge(node_from_comp1, node_from_comp2)
 
@@ -45,19 +47,21 @@ def generate_random_graph(num_nodes, edge_prob):
 
     return edge_index
 
-def create_fake_dataloader(num_proteins=100):
+
+def create_fake_dataloader(num_proteins=100, num_tasks=1000):
 
     protein_datas = []
     for i in range(num_proteins):
-        print(i)
+        # print(i)
         num_atoms = int(np.random.randint(100, 200))
-        edge_indices = generate_random_graph(num_atoms, 2./num_atoms)
+        edge_indices = generate_random_graph(num_atoms, 2.0 / num_atoms)
 
         atom_types = torch.randint(1, 31, (num_atoms,), dtype=torch.long)
         structure_features = torch.rand((num_atoms, 10))
 
-        num_tasks = int(np.random.exponential(10.)) + 1
+        # num_tasks = int(np.random.exponential(10.0)) + 1
         task_indices = torch.randint(1, 20000, (num_tasks, 2), dtype=torch.long)
+        # task_indices = torch.randint(1, num_functio, (num_tasks, 2), dtype=torch.long)
         labels = torch.randint_like(task_indices, low=0, high=2)
 
         labels[:, 0] = i
@@ -65,22 +69,22 @@ def create_fake_dataloader(num_proteins=100):
 
         pos = torch.rand((num_atoms, 3))
 
-        d = Data(edge_index=edge_indices,
-                atom_types=atom_types,
-                structure_features=structure_features,
-                task_indices=task_indices,
-                labels=labels,
-                pos=pos)
+        d = Data(
+            edge_index=edge_indices,
+            atom_types=atom_types,
+            structure_features=structure_features,
+            task_indices=task_indices,
+            labels=labels,
+            pos=pos,
+        )
 
         protein_datas.append(d)
 
-    return DataLoader(protein_datas, batch_size=4)
+    return protein_datas, DataLoader(protein_datas, batch_size=4)
 
 
-
-
-if __name__ == '__main__':
-    dl = create_fake_dataloader()
+if __name__ == "__main__":
+    _, dl = create_fake_dataloader()
 
     for d in dl:
         print(d)
