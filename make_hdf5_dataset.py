@@ -5,6 +5,7 @@ import os
 import ast
 from Bio import PDB
 from tqdm import tqdm
+import torch
 
 RAW_DATA = "data/raw_data"
 ALPHA_FOLD_DIR = "UP000005640_9606_HUMAN_v4"
@@ -25,11 +26,16 @@ PERIODIC_TABLE_IDX = {
 }
 
 D = 10
+DEVICE = "cpu"
 
 def adjacency_features(adj_matrix):
-    structure_features = np.ones((adj_matrix.shape[0], D))
+    structure_features = torch.ones((adj_matrix.shape[0], D), device=DEVICE)
+    Apow = adj_matrix
+    indices = torch.arange(Apow.size(0))
     for d in range(1, D):
-        structure_features[:, d] = np.diag(np.linalg.matrix_power(adj_matrix, d))
+        structure_features[:, d] = torch.diag(Apow.to_dense())
+        if d < D-1:
+            Apow = adj_matrix @ Apow
     return structure_features
 
 def save_hdf5(filename, protein_funcs, parser):
@@ -45,26 +51,26 @@ def save_hdf5(filename, protein_funcs, parser):
             num_atoms += 1
             pos.append(atom.get_coord())
             atom_type.append(PERIODIC_TABLE_IDX[atom.element])
-        pos = np.array(pos)
+        pos = torch.tensor(np.array(pos), device=DEVICE)
         atom_type = np.array(atom_type)
         
 
         pos_diffs = pos[:, np.newaxis, :] - pos[np.newaxis, :, :]
-        distances = np.sqrt(np.sum(pos_diffs * pos_diffs, axis=2))
-        adj_matrix = np.where(distances < 3, 1, 0)
-        np.fill_diagonal(adj_matrix, 0)  # Mask out self edges, which has dist 0
-        edge_i, edge_j = np.nonzero(np.tril(adj_matrix))  # Mask out upper triangle, and get i and j of edges
-        edge_index = np.vstack((edge_i, edge_j))
+        distances = torch.sqrt(torch.sum(pos_diffs * pos_diffs, axis=2))
+        adj_matrix = torch.where(distances < 3, 1.0, 0.0)
+        adj_matrix.fill_diagonal_(0.0)  # Mask out self edges, which has dist 0
+        edge_index_tensor = torch.nonzero(torch.triu(adj_matrix))  # Mask out lower triangle, and get i and j of edges
+        edge_index = edge_index_tensor.T.cpu().numpy()
 
-        adj_feats = adjacency_features(adj_matrix)
+        adj_feats = adjacency_features(adj_matrix.to_sparse())
 
         task_index = ast.literal_eval(protein_data["Qualifier_Idx"].iloc[0])
         labels = ast.literal_eval(protein_data["GO_Idx"].iloc[0])
         
         with h5py.File(f"{PROCESSED_DATA}/protein_inputs/{uniprot_id}.hdf5", 'w') as f:
-            f.create_dataset('pos', data=pos)
+            f.create_dataset('pos', data=pos.cpu().numpy())
             f.create_dataset('atom_type', data=atom_type)
-            f.create_dataset('adj_feats', data=adj_feats)
+            f.create_dataset('adj_feats', data=adj_feats.cpu().numpy())
             f.create_dataset('edge_index', data=edge_index)
             f.create_dataset('task_index', data=task_index)
             f.create_dataset('labels', data=labels)
