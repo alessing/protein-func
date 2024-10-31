@@ -3,6 +3,7 @@
 from model.gcl import E_GCL, unsorted_segment_sum
 import torch
 from torch import nn
+from torch_geometric.nn import global_add_pool, global_mean_pool
 
 
 class E_GCL_mask(E_GCL):
@@ -61,6 +62,7 @@ class E_GCL_mask(E_GCL):
         edge_attr=None,
         node_attr=None,
         n_nodes=None,
+        batch=None,
     ):
         row, col = edge_index
         radial, coord_diff = self.coord2radial(edge_index, coord)
@@ -131,13 +133,13 @@ class EGNN(nn.Module):
         )
         self.to(self.device)
 
-    def forward(self, h0, x, edges, edge_attr, node_mask, edge_mask, n_nodes):
+    def forward(self, h0, x, edge_index, edge_attr, node_mask, edge_mask, n_nodes):
         h = self.embedding(h0)
         for i in range(0, self.n_layers):
             if self.node_attr:
                 h, x, _ = self._modules["gcl_%d" % i](
                     h,
-                    edges,
+                    edge_index,
                     x,
                     node_mask,
                     edge_mask,
@@ -148,7 +150,7 @@ class EGNN(nn.Module):
             else:
                 h, x, _ = self._modules["gcl_%d" % i](
                     h,
-                    edges,
+                    edge_index,
                     x,
                     node_mask,
                     edge_mask,
@@ -160,7 +162,7 @@ class EGNN(nn.Module):
         return h, x
 
 
-class E3Pooling(nn.Moule):
+class E3Pooling(nn.Module):
     def __init__(
         self,
         in_node_nf,
@@ -171,13 +173,14 @@ class E3Pooling(nn.Moule):
         attention=False,
         node_attr=1,
     ):
+        super().__init__()
         self.hidden_dim = hidden_nf
         if node_attr:
             n_node_attr = in_node_nf
         else:
             n_node_attr = 0
 
-        self.e3_pool = E_GCL_mask(
+        self.e3_backbone = E_GCL_mask(
             self.hidden_dim,
             self.hidden_dim,
             self.hidden_dim,
@@ -189,11 +192,13 @@ class E3Pooling(nn.Moule):
             attention=attention,
             pooling=True,
         )
+        self.pool = global_mean_pool
 
-    def forward(self, x, edges, edge_attr=None):
-        h = self.e3_pool(h, edges, x, edge_attr=edge_attr)
+    def forward(self, h, edge_index, x, edge_attr=None, batch=None):
+        h = self.e3_backbone(h, edge_index, x, edge_attr=edge_attr, batch=batch)
         # If h is (B, N, d), take the mean across atoms
-        p = h.mean(dim=1)
+        # p = h.mean(dim=1)
+        p = self.pool(h, batch)
 
         return p
 
@@ -217,7 +222,7 @@ class FuncGNN(nn.Module):
             ]
         )
         self.softmax = nn.Softmax(dim=-1)
-        self.pooling = E3Pooling()
+        self.pooling = E3Pooling(feature_dim, edge_dim, hidden_dim)
 
         # produces W[p, t] + b where p is the pooled message
         self.linear = nn.Linear(hidden_dim + task_embed_dim, num_classes)
@@ -225,13 +230,13 @@ class FuncGNN(nn.Module):
         # task embedding vector (size num_tasks)
         self.tasks_embed = nn.Parameter(torch.rand(num_tasks, task_embed_dim))
 
-    def forward(self, h, x, task_idx):
+    def forward(self, h, x, edge_index, edge_attr, batch, task_idx):
         # Apply E(3)-equivariant layers
         for egnn in self.egnns:
-            h, x = egnn(h, x)
+            h, x = egnn(h, x, edge_index, edge_attr)
 
         # Apply E(3)-invariant pooling layer to get pooled message
-        p = self.pooling(h, x)
+        p = self.pooling(h, edge_index, x, edge_attr=edge_attr, batch=batch)
 
         head = self.linear(torch.cat((p, self.tasks_embed[task_idx, :]), dim=-1))
 
