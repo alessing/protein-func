@@ -258,10 +258,13 @@ class FuncGNN(nn.Module):
         #     tasks_indices[:, 0], return_inverse=True, sorted=False
         # )
         protein_idxs = tasks_indices[:, 0]
-        unique_protein_idxs = torch.unique(tasks_indices[:, 0])
+        unique_protein_idxs = torch.unique(protein_idxs)
         task_idxs = tasks_indices[:, 1]
 
-        out = torch.zeros(B, self.T, self.C)
+        # out = torch.zeros(B, self.T, self.C)
+
+        # maps protein idx b ->pred[b] (prediction for protein b)
+        out = {}
         for b in range(B):
             protein_idx = unique_protein_idxs[b]
             mask = protein_idxs == protein_idx
@@ -279,6 +282,7 @@ class FuncGNN(nn.Module):
             # to get (num_tasks_for_protein, hidden_dim + task_embed_dim)
             PT = torch.cat((P, task_embeddings_for_protein), dim=-1)
             y_pred = self.mlp(PT)
+            # out[b] = y_pred
             out[b] = y_pred
 
             # ground truth
@@ -286,20 +290,5 @@ class FuncGNN(nn.Module):
             # ce_loss = torch.nn.CrossEntropyLoss()
             # protein_loss = ce_loss(y_pred, y)
             # print(f"Protein loss: {protein_loss}")
-
-            # breakpoint()
-
-        # print(torch.unique(tasks_indices[:, 0]))
-        # # print(tasks_indices[:, 1][:10])
-        # breakpoint()
-        # unique_protein = torch.unique(tasks_indices[:, 1])
-        # print(unique_protein[:10])
-        # breakpoint()
-        # for b in range(B):
-
-        # head = self.linear(torch.cat((p, self.tasks_embed[task_idx, :]), dim=-1))
-        # head = self.linear(torch.cat((p, self.tasks_embed[task_idx, :]), dim=-1))
-
-        # y = self.softmax(head)
 
         return out

@@ -7,6 +7,8 @@ from dataloader import create_fake_dataloader
 from torch_geometric.data import DataLoader
 from sklearn.model_selection import train_test_split
 from torch.utils.tensorboard import SummaryWriter
+import datetime
+import os
 
 
 from model.models import FuncGNN
@@ -33,8 +35,6 @@ parser.add_argument(
     help="number of epochs to train (default: 10)",
 )
 
-parser.add_argument("--seed", type=int, default=1, help="random seed (default: 1)")
-
 parser.add_argument("--weight_decay", type=float, default=1e-6, help="weight decay")
 
 parser.add_argument("--lr", type=float, default=1e-4, help="learning rate")
@@ -42,9 +42,6 @@ parser.add_argument("--lr", type=float, default=1e-4, help="learning rate")
 parser.add_argument(
     "--tensorboard", type=str_to_bool, default=False, help="Uses tensorboard"
 )
-
-time_exp_dic = {"time": 0, "counter": 0}
-
 
 args = parser.parse_args()
 
@@ -64,17 +61,10 @@ def create_summary_writer(
 
 
 class EarlyStopper:
-    def __init__(
-        self, patience=1, min_delta=0, plateau_patience=5, plateau_threshold=1e-4
-    ):
+    def __init__(self, patience=1, min_delta=0):
         self.patience = patience
-        self.plateau_patience = plateau_patience
-
         self.min_delta = min_delta
-        self.plateau_threshold = plateau_threshold
-
         self.counter = 0
-        self.plateau_counter = 0
 
         self.min_validation_loss = float("inf")
         self.last_validation_loss = float("inf")
@@ -93,9 +83,25 @@ class EarlyStopper:
 
 
 def main():
-    num_tasks = 1000
     batch_size = 32
-    model = FuncGNN(10, 11, 0, 64, 64, 1000, 3)
+
+    num_equivariant_layers = 10
+    feature_dim = 11
+    edge_dim = 0  # for now (I think we should include one-hot encoded bond types)
+    hidden_dim = 64
+    task_embed_dim = 64
+    num_tasks = 1000  # this will vary for each protein--for now we hard code it
+    num_classes = 3
+
+    model = FuncGNN(
+        num_equivariant_layers,
+        feature_dim,
+        edge_dim,
+        hidden_dim,
+        task_embed_dim,
+        num_tasks,
+        num_classes,
+    )
 
     protein_data, dl = create_fake_dataloader(num_tasks)
 
@@ -134,22 +140,12 @@ def main():
     best_train_loss = float("inf")
     best_epoch = 0
     for epoch in range(0, args.epochs):
-        train_loss = train(model, optimizer, epoch, train_loader, num_tasks, batch_size)
-        breakpoint()
+        train_loss = train(model, optimizer, epoch, train_loader)
         if args.tensorboard:
             writer.add_scalar("Loss/train", train_loss, epoch)
 
-        # if epoch % args.test_interval == 0:
-        val_loss = val(
-            model,
-            epoch,
-            val_loader,
-        )
-        test_loss = val(
-            model,
-            epoch,
-            test_loader,
-        )
+        val_loss = val(model, epoch, val_loader, "val")
+        test_loss = val(model, epoch, test_loader, "test")
 
         if args.tensorboard:
             writer.add_scalar("Loss/val", val_loss, epoch)
@@ -163,6 +159,8 @@ def main():
             best_train_loss = train_loss
             best_epoch = epoch
             # save model
+            os.makedirs("best_models", exist_ok=True)
+
             torch.save(
                 model.state_dict(),
                 f"best_models/funcgnn.pt",
@@ -173,9 +171,6 @@ def main():
             % (best_train_loss, best_val_loss, best_test_loss, best_epoch)
         )
 
-        # json_object = json.dumps(results, indent=4)
-        # with open(args.outf + "/" + args.exp_name + "/losess.json", "w") as outfile:
-        #     outfile.write(json_object)
         if early_stopper.early_stop(val_loss):
             print(f"EARLY STOPPED")
             break
@@ -183,16 +178,14 @@ def main():
     return best_train_loss, best_val_loss, best_test_loss, best_epoch, total_params
 
 
-def train(model, optimizer, epoch, loader, num_tasks, batch_size):
+def train(model, optimizer, epoch, loader):
     model.train()
 
     ce_loss = torch.nn.CrossEntropyLoss()
-    res = {"epoch": epoch, "loss": 0, "coord_reg": 0, "counter": 0}
+    res = {"epoch": epoch, "loss": 0, "counter": 0}
 
     for data in tqdm(loader):
-        # B = batch_size, N = n_nodes, L = seq_len, n = 3
-        print(data)
-
+        # features h = (atom_types, structure_features)
         h = torch.cat((data.atom_types.view(-1, 1), data.structure_features), dim=-1)
         x = data.pos
         edge_index = data.edge_index
@@ -200,43 +193,87 @@ def train(model, optimizer, epoch, loader, num_tasks, batch_size):
         labels = data.labels
         edge_attr = None
         batch = data.batch
+        # batch_size = number of graphs (each graph represents a protein)
+        batch_size = data.ptr.size(0) - 1
 
-        # (B, num_tasks, num_classes)
-        y_pred_matrix = model(h, x, edge_index, edge_attr, batch, tasks_indices)
+        # dictionary mapping b (protein idx) -> (num_tasks_for_protein_b, classes)
+        y_pred_dict = model(h, x, edge_index, edge_attr, batch, tasks_indices)
 
-        # y = torch.zeros(batch_size, num_tasks)
         loss = 0
         protein_idxs = tasks_indices[:, 0]
-        unique_protein_idxs = torch.unique(tasks_indices[:, 0])
+        unique_protein_idxs = torch.unique(protein_idxs)
         for b in range(batch_size):
             protein_idx = unique_protein_idxs[b]
             mask = protein_idxs == protein_idx
             y = labels[:, 1][mask]
-            y_pred = y_pred_matrix[b, :, :]
+            y_pred = y_pred_dict[b]
 
             protein_loss = ce_loss(y_pred, y)
-            print(f"Protein loss: {protein_loss} for protein: {b}")
-            loss += protein_loss
+            # print(f"Protein loss: {protein_loss / y_pred.size(0)} for protein: {b}")
+            num_protein_tasks = y_pred.size(0)
+            loss += protein_loss / num_protein_tasks
 
-        # print(f"y_pred: {y_pred.shape}, y: {y.shape}")
-
-        # ce_loss = torch.nn.CrossEntropyLoss()
-        # protein_batch_loss = ce_loss(y_pred, y)
-
-        breakpoint()
         optimizer.zero_grad()
 
-        # BCE LOS
         loss.backward()
-        torch.nn.utils.clip_grad_norm_(model.parameters(), args.clip)
         optimizer.step()
-        res["loss"] += loss.item() * batch_size
+        res["loss"] += loss.item()
         res["counter"] += batch_size
 
     prefix = ""
     print(
         "%s epoch %d avg loss: %.5f"
         % (prefix + "train", epoch, res["loss"] / res["counter"])
+    )
+
+    return res["loss"] / res["counter"]
+
+
+def val(model, epoch, loader, partition):
+    model.eval()
+
+    ce_loss = torch.nn.CrossEntropyLoss()
+    res = {"epoch": epoch, "loss": 0, "counter": 0}
+
+    with torch.no_grad():
+        for data in tqdm(loader):
+            # features h = (atom_types, structure_features)
+            h = torch.cat(
+                (data.atom_types.view(-1, 1), data.structure_features), dim=-1
+            )
+            x = data.pos
+            edge_index = data.edge_index
+            tasks_indices = data.task_indices
+            labels = data.labels
+            edge_attr = None
+            batch = data.batch
+            # batch_size = number of graphs (each graph represents a protein)
+            batch_size = data.ptr.size(0) - 1
+
+            # dictionary mapping b (protein idx) -> (num_tasks_for_protein_b, classes)
+            y_pred_dict = model(h, x, edge_index, edge_attr, batch, tasks_indices)
+
+            loss = 0
+            protein_idxs = tasks_indices[:, 0]
+            unique_protein_idxs = torch.unique(protein_idxs)
+            for b in range(batch_size):
+                protein_idx = unique_protein_idxs[b]
+                mask = protein_idxs == protein_idx
+                y = labels[:, 1][mask]
+                y_pred = y_pred_dict[b]
+
+                protein_loss = ce_loss(y_pred, y)
+                # print(f"Protein loss: {protein_loss / y_pred.size(0)} for protein: {b}")
+                num_protein_tasks = y_pred.size(0)
+                loss += protein_loss / num_protein_tasks
+
+            res["loss"] += loss.item()
+            res["counter"] += batch_size
+
+    prefix = ""
+    print(
+        "%s epoch %d avg loss: %.5f"
+        % (prefix + partition, epoch, res["loss"] / res["counter"])
     )
 
     return res["loss"] / res["counter"]
