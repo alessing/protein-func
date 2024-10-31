@@ -3,6 +3,9 @@ from torch_geometric.data import InMemoryDataset, download_url, Dataset, Data
 from torch_geometric.loader import DataLoader
 import networkx as nx
 import numpy as np
+import glob
+import os
+import h5py
 
 
 def generate_random_graph(num_nodes, edge_prob):
@@ -76,7 +79,31 @@ def create_fake_dataloader(num_proteins=100):
 
     return DataLoader(protein_datas, batch_size=4)
 
+def load_protein(filename):
+    with h5py.File(filename, 'r') as f:
+        pos = f['pos']
+        atom_type = f['atom_type']
+        structure_feats = f['adj_feats']
+        edge_index = f['edge_index']
+        task_index = f['task_index']
+        labels = f['labels']
+        return Data(edge_index=edge_index,
+                atom_types=atom_type,
+                structure_features=structure_feats,
+                task_indices=task_index,
+                labels=labels,
+                pos=pos)
 
+def get_dataset(dataset_dir):
+    dataset = []
+
+    for fname in glob.glob(os.path.join(dataset_dir, '*.hdf5')):
+        dataset.append(load_protein(os.path.join(dataset_dir, fname)))
+
+    return dataset
+
+def get_dataloader(dataset_dir, batch_size=16):
+    return DataLoader(get_dataset(dataset_dir), batch_size)
 
 
 if __name__ == '__main__':
