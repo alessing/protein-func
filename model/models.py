@@ -232,8 +232,16 @@ class FuncGNN(nn.Module):
         self.pooling = E3Pooling(feature_dim, edge_dim, hidden_dim)
 
         # produces W[p, t] + b where p is the pooled message
-        # TODO: CHANGE TO MLP
-        self.mlp = nn.Linear(hidden_dim + task_embed_dim, num_classes)
+        # self.mlp = nn.Linear(hidden_dim + task_embed_dim, num_classes)
+        self.mlp = nn.Sequential(
+            nn.Linear(hidden_dim + task_embed_dim, hidden_dim),
+            nn.ReLU(),
+            nn.Linear(hidden_dim, hidden_dim),
+            nn.ReLU(),
+            nn.Linear(hidden_dim, hidden_dim),
+            nn.ReLU(),
+            nn.Linear(hidden_dim, num_classes),
+        )
 
         # task embedding vector (size num_tasks)
         # self.tasks_embed = nn.Parameter(torch.rand(num_tasks, task_embed_dim))
