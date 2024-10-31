@@ -94,6 +94,7 @@ class EarlyStopper:
 
 def main():
     num_tasks = 1000
+    batch_size = 32
     model = FuncGNN(10, 11, 0, 64, 64, 1000, 3)
 
     protein_data, dl = create_fake_dataloader(num_tasks)
@@ -104,9 +105,9 @@ def main():
     val_data, test_data = train_test_split(temp_data, test_size=0.5, random_state=42)
 
     # Step 2: Create DataLoader objects for each subset
-    train_loader = DataLoader(train_data, batch_size=32, shuffle=True)
-    val_loader = DataLoader(val_data, batch_size=32, shuffle=False)
-    test_loader = DataLoader(test_data, batch_size=32, shuffle=False)
+    train_loader = DataLoader(train_data, batch_size=batch_size, shuffle=True)
+    val_loader = DataLoader(val_data, batch_size=batch_size, shuffle=False)
+    test_loader = DataLoader(test_data, batch_size=batch_size, shuffle=False)
 
     total_params = sum(p.numel() for p in model.parameters())
     print(f"total params: {total_params}")
@@ -133,7 +134,7 @@ def main():
     best_train_loss = float("inf")
     best_epoch = 0
     for epoch in range(0, args.epochs):
-        train_loss = train(model, optimizer, epoch, train_loader)
+        train_loss = train(model, optimizer, epoch, train_loader, num_tasks, batch_size)
         breakpoint()
         if args.tensorboard:
             writer.add_scalar("Loss/train", train_loss, epoch)
@@ -182,9 +183,10 @@ def main():
     return best_train_loss, best_val_loss, best_test_loss, best_epoch, total_params
 
 
-def train(model, optimizer, epoch, loader):
+def train(model, optimizer, epoch, loader, num_tasks, batch_size):
     model.train()
 
+    ce_loss = torch.nn.CrossEntropyLoss()
     res = {"epoch": epoch, "loss": 0, "coord_reg": 0, "counter": 0}
 
     for data in tqdm(loader):
@@ -198,13 +200,28 @@ def train(model, optimizer, epoch, loader):
         labels = data.labels
         edge_attr = None
         batch = data.batch
-        # print(tasks_indices[:, 0][:10], tasks_indices[:, 1][:10])
-        # breakpoint()
-        # task_idxs = tasks_indices[:, 0]
 
-        model(h, x, edge_index, edge_attr, batch, tasks_indices, labels)
+        # (B, num_tasks, num_classes)
+        y_pred_matrix = model(h, x, edge_index, edge_attr, batch, tasks_indices)
 
-        # protein label is associated with (index), 2nd is actual label
+        # y = torch.zeros(batch_size, num_tasks)
+        loss = 0
+        protein_idxs = tasks_indices[:, 0]
+        unique_protein_idxs = torch.unique(tasks_indices[:, 0])
+        for b in range(batch_size):
+            protein_idx = unique_protein_idxs[b]
+            mask = protein_idxs == protein_idx
+            y = labels[:, 1][mask]
+            y_pred = y_pred_matrix[b, :, :]
+
+            protein_loss = ce_loss(y_pred, y)
+            print(f"Protein loss: {protein_loss} for protein: {b}")
+            loss += protein_loss
+
+        # print(f"y_pred: {y_pred.shape}, y: {y.shape}")
+
+        # ce_loss = torch.nn.CrossEntropyLoss()
+        # protein_batch_loss = ce_loss(y_pred, y)
 
         breakpoint()
         optimizer.zero_grad()
@@ -213,13 +230,13 @@ def train(model, optimizer, epoch, loader):
         loss.backward()
         torch.nn.utils.clip_grad_norm_(model.parameters(), args.clip)
         optimizer.step()
-        res["loss"] += loss.item() * B
-        res["counter"] += B
+        res["loss"] += loss.item() * batch_size
+        res["counter"] += batch_size
 
     prefix = ""
     print(
         "%s epoch %d avg loss: %.5f"
-        % (prefix + loader.dataset.partition, epoch, res["loss"] / res["counter"])
+        % (prefix + "train", epoch, res["loss"] / res["counter"])
     )
 
     return res["loss"] / res["counter"]

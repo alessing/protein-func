@@ -210,6 +210,9 @@ class FuncGNN(nn.Module):
     ):
         super().__init__()
 
+        self.T = num_tasks
+        self.C = num_classes
+
         egnns = [
             EGNN(in_node_nf=feature_dim, in_edge_nf=edge_dim, hidden_nf=hidden_dim)
         ]
@@ -237,7 +240,7 @@ class FuncGNN(nn.Module):
         # TODO: Use Embedding here
         self.tasks_embed = nn.Embedding(num_tasks, task_embed_dim)
 
-    def forward(self, h, x, edge_index, edge_attr, batch, tasks_indices, labels):
+    def forward(self, h, x, edge_index, edge_attr, batch, tasks_indices):
         # Apply E(3)-equivariant layers
         for egnn in self.egnns:
             h, x = egnn(h, x, edge_index, edge_attr)
@@ -245,18 +248,20 @@ class FuncGNN(nn.Module):
         # Apply E(3)-invariant pooling layer to get pooled message
         # Shape (B, hidden_dim) or (B, 64)
         p = self.pooling(h, edge_index, x, edge_attr=edge_attr, batch=batch)
-        print(f"p: {p.shape}")
+        # print(f"p: {p.shape}")
 
         # iterate over each p in batch
         B = p.size(0)
-        print(len(tasks_indices[:, 0]))
-        print(tasks_indices[:, 0][-10:])
+        # print(len(tasks_indices[:, 0]))
+        # print(tasks_indices[:, 0][-10:])
         # unique_protein_idxs, inverse_idxs = torch.unique(
         #     tasks_indices[:, 0], return_inverse=True, sorted=False
         # )
         protein_idxs = tasks_indices[:, 0]
         unique_protein_idxs = torch.unique(tasks_indices[:, 0])
         task_idxs = tasks_indices[:, 1]
+
+        out = torch.zeros(B, self.T, self.C)
         for b in range(B):
             protein_idx = unique_protein_idxs[b]
             mask = protein_idxs == protein_idx
@@ -274,14 +279,15 @@ class FuncGNN(nn.Module):
             # to get (num_tasks_for_protein, hidden_dim + task_embed_dim)
             PT = torch.cat((P, task_embeddings_for_protein), dim=-1)
             y_pred = self.mlp(PT)
+            out[b] = y_pred
 
             # ground truth
-            y = labels[:, 1][mask]
-            ce_loss = torch.nn.CrossEntropyLoss()
-            protein_loss = ce_loss(y_pred, y)
-            print(f"Protein loss: {protein_loss}")
+            # y = labels[:, 1][mask]
+            # ce_loss = torch.nn.CrossEntropyLoss()
+            # protein_loss = ce_loss(y_pred, y)
+            # print(f"Protein loss: {protein_loss}")
 
-            breakpoint()
+            # breakpoint()
 
         # print(torch.unique(tasks_indices[:, 0]))
         # # print(tasks_indices[:, 1][:10])
@@ -296,4 +302,4 @@ class FuncGNN(nn.Module):
 
         # y = self.softmax(head)
 
-        return y
+        return out
