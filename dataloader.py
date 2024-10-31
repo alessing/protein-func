@@ -81,24 +81,25 @@ def create_fake_dataloader(num_proteins=100):
 
 def load_protein(filename):
     with h5py.File(filename, 'r') as f:
-        pos = f['pos']
-        atom_type = f['atom_type']
-        structure_feats = f['adj_feats']
-        edge_index = f['edge_index']
-        task_index = f['task_index']
-        labels = f['labels']
-        return Data(edge_index=edge_index,
+        pos = torch.tensor(f['pos'][:])
+        atom_type = torch.tensor(f['atom_type'][:], dtype=torch.long)
+        structure_feats = torch.tensor(f['adj_feats'][:])
+        edge_index = torch.tensor(f['edge_index'][:], dtype=torch.long)
+        task_index = torch.tensor(f['task_index'][:], dtype=torch.long)
+        labels = torch.tensor(f['labels'][:], dtype=torch.long)
+        d = Data(edge_index=edge_index,
                 atom_types=atom_type,
                 structure_features=structure_feats,
                 task_indices=task_index,
                 labels=labels,
                 pos=pos)
+        return d
 
 def get_dataset(dataset_dir):
     dataset = []
 
     for fname in glob.glob(os.path.join(dataset_dir, '*.hdf5')):
-        dataset.append(load_protein(os.path.join(dataset_dir, fname)))
+        dataset.append(load_protein(fname))
 
     return dataset
 
@@ -107,7 +108,6 @@ def get_dataloader(dataset_dir, batch_size=16):
 
 
 if __name__ == '__main__':
-    dl = create_fake_dataloader()
-
+    dl = get_dataloader('data/test_dataset')
     for d in dl:
         print(d)
