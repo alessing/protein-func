@@ -3,7 +3,7 @@ from torch import nn, optim
 import argparse
 from tqdm import tqdm
 
-from dataloader import create_fake_dataloader
+from dataloader import create_fake_dataloader, get_dataloader
 from torch_geometric.data import DataLoader
 from sklearn.model_selection import train_test_split
 from torch.utils.tensorboard import SummaryWriter
@@ -103,7 +103,7 @@ def main():
         num_classes,
     )
 
-    protein_data, dl = create_fake_dataloader(num_tasks)
+    protein_data, dl = get_dataloader(DATASET_DIR, batch_size=16) #TODO: Matt point to dir
 
     train_data, temp_data = train_test_split(
         protein_data, test_size=0.2, random_state=42
