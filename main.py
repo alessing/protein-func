@@ -48,6 +48,7 @@ args = parser.parse_args()
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 loss_mse = nn.MSELoss()
 
+DATASET_DIR = "data/processed_data/protein_inputs"
 
 def create_summary_writer(
     lr,
