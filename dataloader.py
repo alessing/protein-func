@@ -97,7 +97,7 @@ def load_protein(prot_num, filename):
         assert labels.shape == task_index.shape
         prot_num = torch.full_like(task_index, prot_num)
         task_index = torch.stack((task_index, prot_num), dim=1)
-        labels = torch.stack((labels, prot_num), dim=1)
+        labels = torch.stack((prot_num, labels), dim=1)
 
         d = Data(edge_index=edge_index,
                 atom_types=atom_type,
@@ -111,7 +111,7 @@ def get_dataset(dataset_dir):
     dataset = []
 
     for i, fname in enumerate(glob.glob(os.path.join(dataset_dir, '*.hdf5'))):
-        dataset.append(i, load_protein(fname))
+        dataset.append(load_protein(i, fname))
 
     return dataset
 

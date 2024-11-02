@@ -10,7 +10,6 @@ from torch.utils.tensorboard import SummaryWriter
 import datetime
 import os
 
-
 from models import FuncGNN
 
 torch.manual_seed(42)
@@ -48,7 +47,8 @@ args = parser.parse_args()
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 loss_mse = nn.MSELoss()
 
-DATASET_DIR = "data/processed_data/protein_inputs"
+# DATASET_DIR = "data/processed_data/protein_inputs"
+DATASET_DIR = "temp_proteins"
 
 def create_summary_writer(
     lr,
@@ -86,10 +86,10 @@ class EarlyStopper:
 def main():
     batch_size = 32
 
-    num_equivariant_layers = 10
+    num_equivariant_layers = 2
     feature_dim = 11
     edge_dim = 0  # for now (I think we should include one-hot encoded bond types)
-    hidden_dim = 64
+    hidden_dim = 4
     task_embed_dim = 64
     num_tasks = 1000  # this will vary for each protein--for now we hard code it
     num_classes = 3
@@ -224,7 +224,6 @@ def train(model, optimizer, epoch, loader):
             y_pred = y_pred_dict[b]
 
             protein_loss = ce_loss(y_pred, y)
-            # print(f"Protein loss: {protein_loss / y_pred.size(0)} for protein: {b}")
             num_protein_tasks = y_pred.size(0)
             loss += protein_loss / num_protein_tasks
 
