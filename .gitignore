@@ -1,6 +1,7 @@
 data/raw_data/*
-data/processed_data/protein_inputs/*
+data/processed_data/*
 .DS_Store
 */.DS_Store
-__pycache__/
+*/__pycache__
+__pycache__
 data/test_dataset/*

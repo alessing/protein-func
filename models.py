@@ -265,6 +265,7 @@ class FuncGNN(nn.Module):
         # unique_protein_idxs, inverse_idxs = torch.unique(
         #     tasks_indices[:, 0], return_inverse=True, sorted=False
         # )
+        
         protein_idxs = tasks_indices[:, 0]
         unique_protein_idxs = torch.unique(protein_idxs)
         task_idxs = tasks_indices[:, 1]

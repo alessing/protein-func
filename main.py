@@ -11,7 +11,7 @@ import datetime
 import os
 
 
-from model.models import FuncGNN
+from models import FuncGNN
 
 torch.manual_seed(42)
 
