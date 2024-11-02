@@ -250,9 +250,12 @@ def train(model, optimizer, epoch, loader):
         res["counter"] += batch_size
 
     F1 = TP / (TP + 0.5 * (FP + FN))
+    acc = (TP + TN) / (TP + TN + FP + FN)
+    precision = TP / (TP + FP)
+    recall = TP / (TP + FN)
     print(
-        "%s epoch %d avg loss: %.5f, f1 score: %.5f"
-        % ("train", epoch, res["loss"] / res["counter"], F1)
+        "%s epoch %d avg loss: %.5f, f1 score: %.5f, acc: %.5f, precision: %.5f, recall: %.5f"
+        % ("train", epoch, res["loss"] / res["counter"], F1, acc, precision, recall)
     )
 
     return res["loss"] / res["counter"]
@@ -313,9 +316,12 @@ def val(model, epoch, loader, partition):
             res["counter"] += batch_size
 
     F1 = TP / (TP + 0.5 * (FP + FN))
+    acc = (TP + TN) / (TP + TN + FP + FN)
+    precision = TP / (TP + FP)
+    recall = TP / (TP + FN)
     print(
-        "%s epoch %d avg loss: %.5f, f1 score: %.5f"
-        % (partition, epoch, res["loss"] / res["counter"], F1)
+        "%s epoch %d avg loss: %.5f, f1 score: %.5f, acc: %.5f, precision: %.5f, recall: %.5f"
+        % (partition, epoch, res["loss"] / res["counter"], F1, acc, precision, recall)
     )
 
     return res["loss"] / res["counter"]
