@@ -218,11 +218,10 @@ def train(model, optimizer, epoch, loader):
             y_pred = y_pred_dict[b]
 
             preds = torch.argmax(y_pred, dim=-1)
-            
-            TN = torch.logical_and(preds == y, y == 2).sum()
-            TP = torch.logical_and(preds == y, y != 2).sum()
-            FP = torch.logical_and(preds != y, y == 2).sum()
-            FN = torch.logical_and(preds != y, y != 2).sum()
+            TN += torch.logical_and(preds == y, y == 2).sum()
+            TP += torch.logical_and(preds == y, y != 2).sum()
+            FP += torch.logical_and(preds != y, y == 2).sum()
+            FN += torch.logical_and(preds != y, y != 2).sum()
             
             protein_loss = ce_loss(y_pred, y)
 
@@ -251,6 +250,11 @@ def val(model, epoch, loader, partition):
     ce_loss = torch.nn.CrossEntropyLoss()
     res = {"epoch": epoch, "loss": 0, "counter": 0}
 
+    TP = 0
+    TN = 0
+    FP = 0
+    FN = 0
+
     with torch.no_grad():
         for data in tqdm(loader):
             # features h = (atom_types, structure_features)
@@ -278,6 +282,12 @@ def val(model, epoch, loader, partition):
                 y = labels[:, 1][mask]
                 y_pred = y_pred_dict[b]
 
+                preds = torch.argmax(y_pred, dim=-1)
+                TN += torch.logical_and(preds == y, y == 2).sum()
+                TP += torch.logical_and(preds == y, y != 2).sum()
+                FP += torch.logical_and(preds != y, y == 2).sum()
+                FN += torch.logical_and(preds != y, y != 2).sum()
+
                 protein_loss = ce_loss(y_pred, y)
                 # print(f"Protein loss: {protein_loss / y_pred.size(0)} for protein: {b}")
                 num_protein_tasks = y_pred.size(0)
@@ -286,10 +296,10 @@ def val(model, epoch, loader, partition):
             res["loss"] += loss.item()
             res["counter"] += batch_size
 
-    prefix = ""
+    F1 = TP / (TP + 0.5 * (FP + FN))
     print(
-        "%s epoch %d avg loss: %.5f"
-        % (prefix + partition, epoch, res["loss"] / res["counter"])
+        "%s epoch %d avg loss: %.5f, f1 score: %.5f"
+        % (partition, epoch, res["loss"] / res["counter"], F1)
     )
 
     return res["loss"] / res["counter"]
