@@ -231,21 +231,17 @@ def train(model, optimizer, epoch, loader):
             y = labels[:, 1][mask]
             y_pred = y_pred_dict[b]
 
-            print(
-                f"y: {y.shape}, y_pred: {y_pred.shape} {torch.nn.functional.softmax(y_pred, dim=-1)}"
-            )
-            # probs = torch.nn.functional.softmax(y_pred, dim=-1)
             preds = torch.argmax(y_pred, dim=-1)
-
-            print(idx)
-            breakpoint()
-
+            
+            TN = torch.logical_and(preds == y, y == 2).sum()
+            TP = torch.logical_and(preds == y, y != 2).sum()
+            FP = torch.logical_and(preds != y, y == 2).sum()
+            FN = torch.logical_and(preds != y, y != 2).sum()
+            
             protein_loss = ce_loss(y_pred, y)
 
             num_protein_tasks = y_pred.size(0)
             loss += protein_loss / num_protein_tasks
-
-        breakpoint()
 
         optimizer.zero_grad()
 
@@ -254,10 +250,10 @@ def train(model, optimizer, epoch, loader):
         res["loss"] += loss.item()
         res["counter"] += batch_size
 
-    prefix = ""
+    F1 = TP / (TP + 0.5 * (FP + FN))
     print(
-        "%s epoch %d avg loss: %.5f"
-        % (prefix + "train", epoch, res["loss"] / res["counter"])
+        "%s epoch %d avg loss: %.5f, f1 score: %.5f"
+        % ("train", epoch, res["loss"] / res["counter"], F1)
     )
 
     return res["loss"] / res["counter"]
