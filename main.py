@@ -178,6 +178,18 @@ def main():
 
     return best_train_loss, best_val_loss, best_test_loss, best_epoch, total_params
 
+def add_negative_samples(task_indices, labels, num_tasks=1000):
+    new_task_indices = task_indices.clone()
+    new_labels = labels.clone()
+    new_labels[:, 1] = 2
+    new_task_indices[:, 1] = torch.randint(low=0, high=num_tasks, size=new_task_indices.shape[0])
+
+    task_indices = torch.cat((task_indices, new_task_indices), dim=0)
+    labels = torch.cat((labels, new_labels), dim=0)
+
+    return task_indices, labels
+
+
 
 def train(model, optimizer, epoch, loader):
     model.train()
@@ -196,6 +208,8 @@ def train(model, optimizer, epoch, loader):
         batch = data.batch
         # batch_size = number of graphs (each graph represents a protein)
         batch_size = data.ptr.size(0) - 1
+
+        tasks_indices, labels = add_negative_samples(tasks_indices, labels)
 
         # dictionary mapping b (protein idx) -> (num_tasks_for_protein_b, classes)
         y_pred_dict = model(h, x, edge_index, edge_attr, batch, tasks_indices)
