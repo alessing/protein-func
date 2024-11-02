@@ -64,8 +64,8 @@ def save_hdf5(filename, protein_funcs, parser):
 
         adj_feats = adjacency_features(adj_matrix.to_sparse())
 
-        task_index = ast.literal_eval(protein_data["Qualifier_Idx"].iloc[0])
-        labels = ast.literal_eval(protein_data["GO_Idx"].iloc[0])
+        task_index = ast.literal_eval(protein_data["GO_Idx"].iloc[0])
+        labels = ast.literal_eval(protein_data["Qualifier_Idx"].iloc[0])
         
         with h5py.File(f"{PROCESSED_DATA}/protein_inputs/{uniprot_id}.hdf5", 'w') as f:
             f.create_dataset('pos', data=pos.cpu().numpy())

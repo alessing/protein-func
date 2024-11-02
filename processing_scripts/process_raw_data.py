@@ -44,6 +44,7 @@ def main():
     for qual in set(data["Qualifier"]):
         print(f'{qual}: {len(data[data["Qualifier"] == qual])}')
     data["Qualifier_Idx"] = data["Qualifier"].apply(lambda x: 0 if x == "enables" else (1 if x == "contributes_to" else 2))
+    data = data.drop_duplicates(subset=["DB_Object_ID", "GO_ID"], keep='first')
 
     protein_df = data.groupby("DB_Object_ID").agg({"Qualifier_Idx": list, "GO_ID": list}).reset_index()
 
