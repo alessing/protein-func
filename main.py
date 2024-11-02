@@ -50,6 +50,7 @@ loss_mse = nn.MSELoss()
 # DATASET_DIR = "data/processed_data/protein_inputs"
 DATASET_DIR = "temp_proteins"
 
+
 def create_summary_writer(
     lr,
     weight_decay,
@@ -104,7 +105,9 @@ def main():
         num_classes,
     )
 
-    protein_data, dl = get_dataloader(DATASET_DIR, batch_size=16) #TODO: Matt point to dir
+    protein_data, dl = get_dataloader(
+        DATASET_DIR, batch_size=16
+    )  # TODO: Matt point to dir
 
     train_data, temp_data = train_test_split(
         protein_data, test_size=0.2, random_state=42
@@ -185,6 +188,11 @@ def train(model, optimizer, epoch, loader):
     ce_loss = torch.nn.CrossEntropyLoss()
     res = {"epoch": epoch, "loss": 0, "counter": 0}
 
+    TP = 0
+    TN = 0
+    FP = 0
+    FN = 0
+
     for data in tqdm(loader):
         # features h = (atom_types, structure_features)
         h = torch.cat((data.atom_types.view(-1, 1), data.structure_features), dim=-1)
@@ -209,9 +217,21 @@ def train(model, optimizer, epoch, loader):
             y = labels[:, 1][mask]
             y_pred = y_pred_dict[b]
 
+            print(
+                f"y: {y.shape}, y_pred: {y_pred.shape} {torch.nn.functional.softmax(y_pred, dim=-1)}"
+            )
+            # probs = torch.nn.functional.softmax(y_pred, dim=-1)
+            preds = torch.argmax(y_pred, dim=-1)
+
+            print(idx)
+            breakpoint()
+
             protein_loss = ce_loss(y_pred, y)
+
             num_protein_tasks = y_pred.size(0)
             loss += protein_loss / num_protein_tasks
+
+        breakpoint()
 
         optimizer.zero_grad()
 
