@@ -54,9 +54,11 @@ DATASET_DIR = "temp_proteins"
 def create_summary_writer(
     lr,
     weight_decay,
+    hidden_size,
+    num_equivariant_layers
 ):
     dt = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
-    log_dir = f"./runs/{dt}_funcgnn_lr_{lr}_wd_{weight_decay}/"
+    log_dir = f"./runs/{dt}_funcgnn_lr_{lr}_wd_{weight_decay}_hid_size_{hidden_size}_num_equi_layers_{num_equivariant_layers}/"
 
     writer = SummaryWriter(log_dir)
     return writer
@@ -87,11 +89,11 @@ class EarlyStopper:
 def main():
     batch_size = 32
 
-    num_equivariant_layers = 2
+    num_equivariant_layers = 8
     feature_dim = 11
     edge_dim = 0  # for now (I think we should include one-hot encoded bond types)
-    hidden_dim = 4
-    task_embed_dim = 64
+    hidden_dim = 512
+    task_embed_dim = 256
     num_tasks = 1000  # this will vary for each protein--for now we hard code it
     num_classes = 3
 
@@ -134,6 +136,8 @@ def main():
         writer = create_summary_writer(
             lr,
             weight_decay,
+            hidden_dim,
+            num_equivariant_layers
         )
 
     # # early stopping
