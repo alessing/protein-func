@@ -94,7 +94,7 @@ def main():
     edge_dim = 0  # for now (I think we should include one-hot encoded bond types)
     hidden_dim = 16
     task_embed_dim = 8
-    num_tasks = 1000  # this will vary for each protein--for now we hard code it
+    num_tasks = 20000  # this will vary for each protein--for now we hard code it
     num_classes = 3
 
     model = FuncGNN(
