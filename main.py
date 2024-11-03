@@ -47,8 +47,8 @@ args = parser.parse_args()
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 loss_mse = nn.MSELoss()
 
-# DATASET_DIR = "data/processed_data/protein_inputs"
-DATASET_DIR = "temp_proteins"
+DATASET_DIR = "data/processed_data/protein_inputs"
+#DATASET_DIR = "temp_proteins"
 
 
 def create_summary_writer(
@@ -89,11 +89,11 @@ class EarlyStopper:
 def main():
     batch_size = 32
 
-    num_equivariant_layers = 10
+    num_equivariant_layers = 2
     feature_dim = 11
     edge_dim = 0  # for now (I think we should include one-hot encoded bond types)
-    hidden_dim = 256
-    task_embed_dim = 128
+    hidden_dim = 16
+    task_embed_dim = 8
     num_tasks = 1000  # this will vary for each protein--for now we hard code it
     num_classes = 3
 
