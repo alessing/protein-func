@@ -105,7 +105,7 @@ def main():
         task_embed_dim,
         num_tasks,
         num_classes,
-    )
+    ).to(device)
 
     protein_data, dl = get_dataloader(
         DATASET_DIR, batch_size=16
@@ -123,9 +123,6 @@ def main():
 
     total_params = sum(p.numel() for p in model.parameters())
     print(f"total params: {total_params}")
-
-    if torch.cuda.is_available():
-        model = model.cuda()
 
     weight_decay = args.weight_decay
     lr = args.lr
@@ -189,7 +186,7 @@ def add_negative_samples(task_indices, labels, num_tasks=1000):
     new_task_indices = task_indices.clone()
     new_labels = labels.clone()
     new_labels[:, 1] = 2
-    new_task_indices[:, 1] = torch.randint(low=0, high=num_tasks, size=(new_task_indices.shape[0],))
+    new_task_indices[:, 1] = torch.randint(low=0, high=num_tasks, size=(new_task_indices.shape[0],), device=device)
 
     task_indices = torch.cat((task_indices, new_task_indices), dim=0)
     labels = torch.cat((labels, new_labels), dim=0)
@@ -211,13 +208,13 @@ def train(model, optimizer, epoch, loader):
 
     for data in tqdm(loader):
         # features h = (atom_types, structure_features)
-        h = torch.cat((data.atom_types.view(-1, 1), data.structure_features), dim=-1)
-        x = data.pos
-        edge_index = data.edge_index
-        tasks_indices = data.task_indices
-        labels = data.labels
+        h = torch.cat((data.atom_types.view(-1, 1), data.structure_features), dim=-1).to(device)
+        x = data.pos.to(device)
+        edge_index = data.edge_index.to(device)
+        tasks_indices = data.task_indices.to(device)
+        labels = data.labels.to(device)
         edge_attr = None
-        batch = data.batch
+        batch = data.batch.to(device)
         # batch_size = number of graphs (each graph represents a protein)
         batch_size = data.ptr.size(0) - 1
 
@@ -278,6 +275,7 @@ def val(model, epoch, loader, partition):
 
     with torch.no_grad():
         for data in tqdm(loader):
+            data = data.to(device)
             # features h = (atom_types, structure_features)
             h = torch.cat(
                 (data.atom_types.view(-1, 1), data.structure_features), dim=-1
