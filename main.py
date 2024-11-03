@@ -108,7 +108,7 @@ def main():
     ).to(device)
 
     protein_data, dl = get_dataloader(
-        DATASET_DIR, batch_size=16
+        DATASET_DIR, batch_size=1
     )  # TODO: Matt point to dir
 
     train_data, temp_data = train_test_split(
