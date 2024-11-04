@@ -18,6 +18,7 @@ parser = argparse.ArgumentParser(
     description="Protein Function Prediction with E(3)-Equivariant GNNs and Multi-task Learning"
 )
 
+NUM_TASKS = 4598
 
 def str_to_bool(value):
     if value.lower() in {"false", "f", "0", "no", "n"}:
@@ -87,14 +88,14 @@ class EarlyStopper:
 
 
 def main():
-    batch_size = 32
+    batch_size = 8
 
-    num_equivariant_layers = 2
+    num_equivariant_layers = 1
     feature_dim = 11
     edge_dim = 0  # for now (I think we should include one-hot encoded bond types)
-    hidden_dim = 16
-    task_embed_dim = 8
-    num_tasks = 20000  # this will vary for each protein--for now we hard code it
+    hidden_dim = 4
+    task_embed_dim = 4
+    num_tasks = NUM_TASKS  # this will vary for each protein--for now we hard code it
     num_classes = 3
 
     model = FuncGNN(
@@ -108,7 +109,7 @@ def main():
     ).to(device)
 
     protein_data, dl = get_dataloader(
-        DATASET_DIR, batch_size=1
+        DATASET_DIR, batch_size=batch_size
     )  # TODO: Matt point to dir
 
     train_data, temp_data = train_test_split(
@@ -182,7 +183,7 @@ def main():
 
     return best_train_loss, best_val_loss, best_test_loss, best_epoch, total_params
 
-def add_negative_samples(task_indices, labels, num_tasks=1000):
+def add_negative_samples(task_indices, labels, num_tasks=4598):
     new_task_indices = task_indices.clone()
     new_labels = labels.clone()
     new_labels[:, 1] = 2
