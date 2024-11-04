@@ -1,8 +1,10 @@
 name: protein-func
 channels:
+  - pyg
+  - pytorch
+  - nvidia
   - defaults
   - conda-forge
-  - pyg
 dependencies:
   - python=3.10
   - scikit-learn
@@ -11,6 +13,7 @@ dependencies:
   - h5py
   - pandas
   - pytorch
+  - pytorch-cuda=12.4
   - pyg
   - pip
   - pip:
