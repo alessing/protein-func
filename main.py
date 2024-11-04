@@ -98,6 +98,8 @@ def main():
     num_tasks = NUM_TASKS  # this will vary for each protein--for now we hard code it
     num_classes = 3
 
+    print("1")
+
     model = FuncGNN(
         num_equivariant_layers,
         feature_dim,
@@ -108,14 +110,20 @@ def main():
         num_classes,
     ).to(device)
 
+    print("2")
+
     protein_data, dl = get_dataloader(
         DATASET_DIR, batch_size=batch_size
     )  # TODO: Matt point to dir
+
+    print("3")
 
     train_data, temp_data = train_test_split(
         protein_data, test_size=0.2, random_state=42
     )
     val_data, test_data = train_test_split(temp_data, test_size=0.5, random_state=42)
+
+    print("4")
 
     # Step 2: Create DataLoader objects for each subset
     train_loader = DataLoader(train_data, batch_size=batch_size, shuffle=True)
@@ -130,6 +138,8 @@ def main():
 
     optimizer = optim.Adam(model.parameters(), lr=lr, weight_decay=weight_decay)
 
+    print("5")
+
     if args.tensorboard:
         writer = create_summary_writer(
             lr,
@@ -138,6 +148,8 @@ def main():
             num_equivariant_layers
         )
 
+    print("6")
+
     # # early stopping
     early_stopper = EarlyStopper(patience=10, min_delta=0.005)
     results = {"epochs": [], "losess": []}
@@ -145,13 +157,19 @@ def main():
     best_test_loss = float("inf")
     best_train_loss = float("inf")
     best_epoch = 0
+
+    print("7")
+
     for epoch in range(0, args.epochs):
         train_loss = train(model, optimizer, epoch, train_loader)
+        print("8")
         if args.tensorboard:
             writer.add_scalar("Loss/train", train_loss, epoch)
 
         val_loss = val(model, epoch, val_loader, "val")
         test_loss = val(model, epoch, test_loader, "test")
+
+        print("9")
 
         if args.tensorboard:
             writer.add_scalar("Loss/val", val_loss, epoch)
@@ -208,6 +226,7 @@ def train(model, optimizer, epoch, loader):
     FN = 0
 
     for data in tqdm(loader):
+        print("12")
         # features h = (atom_types, structure_features)
         h = torch.cat((data.atom_types.view(-1, 1), data.structure_features), dim=-1).to(device)
         x = data.pos.to(device)
@@ -219,7 +238,11 @@ def train(model, optimizer, epoch, loader):
         # batch_size = number of graphs (each graph represents a protein)
         batch_size = data.ptr.size(0) - 1
 
+        print("10")
+
         tasks_indices, labels = add_negative_samples(tasks_indices, labels)
+
+        print("11")
 
         # dictionary mapping b (protein idx) -> (num_tasks_for_protein_b, classes)
         y_pred_dict = model(h, x, edge_index, edge_attr, batch, tasks_indices)

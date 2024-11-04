@@ -6,6 +6,7 @@ import numpy as np
 import glob
 import os
 import h5py
+from tqdm import tqdm
 
 np.random.seed(42)
 
@@ -110,7 +111,7 @@ def load_protein(prot_num, filename):
 def get_dataset(dataset_dir):
     dataset = []
 
-    for i, fname in enumerate(glob.glob(os.path.join(dataset_dir, '*.hdf5'))):
+    for i, fname in tqdm(enumerate(glob.glob(os.path.join(dataset_dir, '*.hdf5')))):
         dataset.append(load_protein(i, fname))
 
     return dataset
