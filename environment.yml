@@ -2,6 +2,7 @@ name: protein-func
 channels:
   - defaults
   - conda-forge
+  - pyg
 dependencies:
   - python=3.10
   - scikit-learn
