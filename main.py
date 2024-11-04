@@ -247,14 +247,20 @@ def train(model, optimizer, epoch, loader):
         # dictionary mapping b (protein idx) -> (num_tasks_for_protein_b, classes)
         y_pred_dict = model(h, x, edge_index, edge_attr, batch, tasks_indices)
 
+        print("13")
+
         loss = 0
         protein_idxs = tasks_indices[:, 0]
         unique_protein_idxs = torch.unique(protein_idxs)
+        print("14")
         for b in range(batch_size):
             protein_idx = unique_protein_idxs[b]
+            print("15")
             mask = protein_idxs == protein_idx
+            print("16")
             y = labels[:, 1][mask]
             y_pred = y_pred_dict[b]
+            print("17")
 
             preds = torch.argmax(y_pred, dim=-1)
             TN += torch.logical_and(preds == y, y == 2).sum()
