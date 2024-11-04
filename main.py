@@ -98,6 +98,7 @@ def main():
     num_tasks = NUM_TASKS  # this will vary for each protein--for now we hard code it
     num_classes = 3
 
+    print(device)
     print("1")
 
     model = FuncGNN(

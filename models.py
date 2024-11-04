@@ -250,13 +250,16 @@ class FuncGNN(nn.Module):
 
     def forward(self, h, x, edge_index, edge_attr, batch, tasks_indices):
         # Apply E(3)-equivariant layers
-        for egnn in self.egnns:
+        for ln, egnn in enumerate(self.egnns):
             h, x = egnn(h, x, edge_index, edge_attr)
+            print("ln", ln)
 
         # Apply E(3)-invariant pooling layer to get pooled message
         # Shape (B, hidden_dim) or (B, 64)
         p = self.pooling(h, edge_index, x, edge_attr=edge_attr, batch=batch)
         # print(f"p: {p.shape}")
+
+        print("18")
 
         # iterate over each p in batch
         B = p.size(0)
@@ -269,6 +272,8 @@ class FuncGNN(nn.Module):
         protein_idxs = tasks_indices[:, 0]
         unique_protein_idxs = torch.unique(protein_idxs)
         task_idxs = tasks_indices[:, 1]
+
+        print("19")
 
         # out = torch.zeros(B, self.T, self.C)
 
