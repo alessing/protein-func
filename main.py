@@ -88,13 +88,13 @@ class EarlyStopper:
 
 
 def main():
-    batch_size = 8
+    batch_size = 16
 
-    num_equivariant_layers = 1
+    num_equivariant_layers = 8
     feature_dim = 11
     edge_dim = 0  # for now (I think we should include one-hot encoded bond types)
-    hidden_dim = 4
-    task_embed_dim = 4
+    hidden_dim = 256
+    task_embed_dim = 128
     num_tasks = NUM_TASKS  # this will vary for each protein--for now we hard code it
     num_classes = 3
 
