@@ -318,7 +318,7 @@ def train(model, optimizer, epoch, loader):
                 print(new_loss)
                 loss += new_loss
             else:
-                loss += 0.
+                loss += torch.tensor(0., device=device)
 
         optimizer.zero_grad()
 
