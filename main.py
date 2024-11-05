@@ -175,7 +175,7 @@ def main():
         position_dim,
         num_classes,
         model_type=model_type,
-    ).to(device).double()
+    ).to(device)
 
     protein_data, dl = get_dataloader(DATASET_DIR, batch_size=batch_size)
     # protein_data, dl = create_fake_dataloader(num_proteins=1000, num_tasks=4598)
