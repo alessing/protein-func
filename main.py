@@ -312,7 +312,12 @@ def train(model, optimizer, epoch, loader):
             protein_loss = ce_loss(y_pred, y)
 
             num_protein_tasks = y_pred.size(0)
-            loss += protein_loss / num_protein_tasks
+            new_loss =  protein_loss / num_protein_tasks
+            if not (torch.isnan(new_loss).any() and torch.isinf(new_loss).any()):
+                print(new_loss)
+                loss += new_loss
+            else:
+                loss += 0.
 
         optimizer.zero_grad()
 
