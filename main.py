@@ -175,7 +175,7 @@ def main():
         position_dim,
         num_classes,
         model_type=model_type,
-    ).to(device)
+    ).to(device).double()
 
     protein_data, dl = get_dataloader(DATASET_DIR, batch_size=batch_size)
     # protein_data, dl = create_fake_dataloader(num_proteins=1000, num_tasks=4598)
@@ -327,6 +327,7 @@ def train(model, optimizer, epoch, loader):
             optimizer.zero_grad()
 
             loss.backward()
+            torch.nn.utils.clip_grad_norm_(model.parameters(), 0.5)
             optimizer.step()
             res["loss"] += loss.item()
             res["counter"] += batch_size
