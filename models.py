@@ -3,7 +3,7 @@
 from model.gcl import E_GCL, unsorted_segment_sum
 import torch
 from torch import nn
-from torch_geometric.nn import global_add_pool, global_mean_pool
+from torch_geometric.nn import global_add_pool, global_mean_pool, GAT
 
 
 class E_GCL_mask(E_GCL):
@@ -166,6 +166,7 @@ class E3Pooling(nn.Module):
         coords_weight=1.0,
         attention=False,
         node_attr=1,
+        model_type="egnn",
     ):
         super().__init__()
         self.hidden_dim = hidden_nf
@@ -174,22 +175,28 @@ class E3Pooling(nn.Module):
         else:
             n_node_attr = 0
 
-        self.e3_backbone = E_GCL(
-            self.hidden_dim,
-            self.hidden_dim,
-            self.hidden_dim,
-            edges_in_d=in_edge_nf,
-            nodes_att_dim=n_node_attr,
-            act_fn=act_fn,
-            recurrent=True,
-            coords_weight=coords_weight,
-            attention=attention,
-            pooling=True,
-        )
+        self.model_type = model_type
+
+        if self.model_type == "egnn":
+            self.e3_backbone = E_GCL(
+                self.hidden_dim,
+                self.hidden_dim,
+                self.hidden_dim,
+                edges_in_d=in_edge_nf,
+                nodes_att_dim=n_node_attr,
+                act_fn=act_fn,
+                recurrent=True,
+                coords_weight=coords_weight,
+                attention=attention,
+                pooling=True,
+            )
+
         self.pool = global_mean_pool
 
-    def forward(self, h, edge_index, x, edge_attr=None, batch=None):
-        h = self.e3_backbone(h, edge_index, x, edge_attr=edge_attr)
+    def forward(self, h, batch, edge_index=None, x=None, edge_attr=None):
+        if self.model_type == "egnn":
+            h = self.e3_backbone(h, edge_index, x, edge_attr=edge_attr)
+
         # If h is (B, N, d), take the mean across atoms
         # p = h.mean(dim=1)
         p = self.pool(h, batch)
@@ -200,33 +207,44 @@ class E3Pooling(nn.Module):
 class FuncGNN(nn.Module):
     def __init__(
         self,
-        num_equivariant_layers,
+        num_layers,
         feature_dim,
         edge_dim,
         hidden_dim,
         task_embed_dim,
         num_tasks,
+        position_dim=3,
         num_classes=3,
+        dropout=0.1,
+        model_type="egnn",
     ):
         super().__init__()
 
         self.T = num_tasks
         self.C = num_classes
+        self.model_type = model_type
 
-        egnns = [
-            EGNN(in_node_nf=feature_dim, in_edge_nf=edge_dim, hidden_nf=hidden_dim)
-        ]
-        for _ in range(num_equivariant_layers - 1):
-            egnns.append(
-                EGNN(in_node_nf=hidden_dim, in_edge_nf=edge_dim, hidden_nf=hidden_dim)
+        if self.model_type == "egnn":
+            spatial_layers = [
+                EGNN(in_node_nf=feature_dim, in_edge_nf=edge_dim, hidden_nf=hidden_dim)
+            ]
+            for _ in range(num_layers - 1):
+                spatial_layers.append(
+                    EGNN(
+                        in_node_nf=hidden_dim, in_edge_nf=edge_dim, hidden_nf=hidden_dim
+                    )
+                )
+            self.spatial_model = nn.ModuleList(spatial_layers)
+        elif self.model_type == "gat":
+            self.spatial_model = GAT(
+                in_channels=feature_dim + position_dim,
+                hidden_channels=hidden_dim,
+                num_layers=num_layers,
+                out_channels=hidden_dim,
+                dropout=dropout,
             )
-        # self.egnns = nn.ModuleList(
-        #     [
-        #         EGNN(in_node_nf=feature_dim, in_edge_nf=edge_dim, hidden_nf=hidden_dim)
-        #         for _ in range(num_equivariant_layers)
-        #     ]
-        # )
-        self.egnns = nn.ModuleList(egnns)
+        else:
+            raise Exception("Not implemented!")
 
         # self.softmax = nn.Softmax(dim=-1)
         self.pooling = E3Pooling(feature_dim, edge_dim, hidden_dim)
@@ -243,43 +261,34 @@ class FuncGNN(nn.Module):
             nn.Linear(hidden_dim, num_classes),
         )
 
-        # task embedding vector (size num_tasks)
-        # self.tasks_embed = nn.Parameter(torch.rand(num_tasks, task_embed_dim))
-        # TODO: Use Embedding here
+        # task embedding
         self.tasks_embed = nn.Embedding(num_tasks, task_embed_dim)
 
-    def forward(self, h, x, edge_index, edge_attr, batch, tasks_indices):
+    def forward(self, h, x, edge_index, edge_attr, batch, tasks_indices, batch_size):
         # Apply E(3)-equivariant layers
-        for ln, egnn in enumerate(self.egnns):
-            h, x = egnn(h, x, edge_index, edge_attr)
-            print("ln", ln)
+        if self.model_type == "egnn":
+            for egnn in self.spatial_model:
+                h, x = egnn(h, x, edge_index, edge_attr)
+
+        elif self.model_type == "gat":
+            input = torch.cat((h, x), dim=-1)
+            h = self.spatial_model(
+                x=input, edge_index=edge_index, batch=batch, batch_size=batch_size
+            )
+        else:
+            raise Exception("Not implemented!")
 
         # Apply E(3)-invariant pooling layer to get pooled message
         # Shape (B, hidden_dim) or (B, 64)
-        p = self.pooling(h, edge_index, x, edge_attr=edge_attr, batch=batch)
-        # print(f"p: {p.shape}")
+        p = self.pooling(h, batch, edge_index=edge_index, x=x, edge_attr=edge_attr)
 
-        print("18")
-
-        # iterate over each p in batch
-        B = p.size(0)
-        # print(len(tasks_indices[:, 0]))
-        # print(tasks_indices[:, 0][-10:])
-        # unique_protein_idxs, inverse_idxs = torch.unique(
-        #     tasks_indices[:, 0], return_inverse=True, sorted=False
-        # )
-        
         protein_idxs = tasks_indices[:, 0]
         unique_protein_idxs = torch.unique(protein_idxs)
         task_idxs = tasks_indices[:, 1]
 
-        print("19")
-
-        # out = torch.zeros(B, self.T, self.C)
-
         # maps protein idx b ->pred[b] (prediction for protein b)
         out = {}
-        for b in range(B):
+        for b in range(batch_size):
             protein_idx = unique_protein_idxs[b]
             mask = protein_idxs == protein_idx
             # task indices corresponding to protein protein_idx
@@ -296,13 +305,6 @@ class FuncGNN(nn.Module):
             # to get (num_tasks_for_protein, hidden_dim + task_embed_dim)
             PT = torch.cat((P, task_embeddings_for_protein), dim=-1)
             y_pred = self.mlp(PT)
-            # out[b] = y_pred
             out[b] = y_pred
-
-            # ground truth
-            # y = labels[:, 1][mask]
-            # ce_loss = torch.nn.CrossEntropyLoss()
-            # protein_loss = ce_loss(y_pred, y)
-            # print(f"Protein loss: {protein_loss}")
 
         return out

@@ -86,42 +86,47 @@ def create_fake_dataloader(num_proteins=100, num_tasks=1000):
 
     return protein_datas, DataLoader(protein_datas, batch_size=4)
 
+
 def load_protein(prot_num, filename):
-    with h5py.File(filename, 'r') as f:
-        pos = torch.tensor(f['pos'][:])
-        atom_type = torch.tensor(f['atom_type'][:], dtype=torch.long)
-        structure_feats = torch.tensor(f['adj_feats'][:])
-        edge_index = torch.tensor(f['edge_index'][:], dtype=torch.long)
-        task_index = torch.tensor(f['task_index'][:], dtype=torch.long)
-        labels = torch.tensor(f['labels'][:], dtype=torch.long)
+    with h5py.File(filename, "r") as f:
+        pos = torch.tensor(f["pos"][:])
+        atom_type = torch.tensor(f["atom_type"][:], dtype=torch.long)
+        structure_feats = torch.tensor(f["adj_feats"][:])
+        edge_index = torch.tensor(f["edge_index"][:], dtype=torch.long)
+        task_index = torch.tensor(f["task_index"][:], dtype=torch.long)
+        labels = torch.tensor(f["labels"][:], dtype=torch.long)
 
         assert labels.shape == task_index.shape
         prot_num = torch.full_like(task_index, prot_num)
         task_index = torch.stack((prot_num, task_index), dim=1)
         labels = torch.stack((prot_num, labels), dim=1)
 
-        d = Data(edge_index=edge_index,
-                atom_types=atom_type,
-                structure_features=structure_feats,
-                task_indices=task_index,
-                labels=labels,
-                pos=pos)
+        d = Data(
+            edge_index=edge_index,
+            atom_types=atom_type,
+            structure_features=structure_feats,
+            task_indices=task_index,
+            labels=labels,
+            pos=pos,
+        )
         return d
+
 
 def get_dataset(dataset_dir):
     dataset = []
 
-    for i, fname in tqdm(enumerate(glob.glob(os.path.join(dataset_dir, '*.hdf5')))):
+    for i, fname in tqdm(enumerate(glob.glob(os.path.join(dataset_dir, "*.hdf5")))):
         dataset.append(load_protein(i, fname))
 
     return dataset
+
 
 def get_dataloader(dataset_dir, batch_size=16):
     dataset = get_dataset(dataset_dir)
     return dataset, DataLoader(dataset, batch_size)
 
 
-if __name__ == '__main__':
-    _, dl = get_dataloader('data/test_dataset')
+if __name__ == "__main__":
+    _, dl = get_dataloader("data/test_dataset")
     for d in dl:
         print(d)

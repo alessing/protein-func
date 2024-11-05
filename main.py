@@ -20,6 +20,7 @@ parser = argparse.ArgumentParser(
 
 NUM_TASKS = 4598
 
+
 def str_to_bool(value):
     if value.lower() in {"false", "f", "0", "no", "n"}:
         return False
@@ -49,15 +50,10 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 loss_mse = nn.MSELoss()
 
 DATASET_DIR = "data/processed_data/protein_inputs"
-#DATASET_DIR = "temp_proteins"
+# DATASET_DIR = "temp_proteins"
 
 
-def create_summary_writer(
-    lr,
-    weight_decay,
-    hidden_size,
-    num_equivariant_layers
-):
+def create_summary_writer(lr, weight_decay, hidden_size, num_equivariant_layers):
     dt = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
     log_dir = f"./runs/{dt}_funcgnn_lr_{lr}_wd_{weight_decay}_hid_size_{hidden_size}_num_equi_layers_{num_equivariant_layers}/"
 
@@ -89,42 +85,37 @@ class EarlyStopper:
 
 def main():
     batch_size = 16
-
-    num_equivariant_layers = 8
+    num_layers = 8
     feature_dim = 11
     edge_dim = 0  # for now (I think we should include one-hot encoded bond types)
     hidden_dim = 256
     task_embed_dim = 128
     num_tasks = NUM_TASKS  # this will vary for each protein--for now we hard code it
     num_classes = 3
-
-    print(device)
-    print("1")
+    position_dim = 3
+    model_type = "egnn"  # or "gat"
 
     model = FuncGNN(
-        num_equivariant_layers,
+        num_layers,
         feature_dim,
         edge_dim,
         hidden_dim,
         task_embed_dim,
         num_tasks,
+        position_dim,
         num_classes,
+        model_type=model_type,
     ).to(device)
-
-    print("2")
 
     protein_data, dl = get_dataloader(
         DATASET_DIR, batch_size=batch_size
     )  # TODO: Matt point to dir
-
-    print("3")
+    # protein_data, dl = create_fake_dataloader(num_proteins=1000, num_tasks=4598)
 
     train_data, temp_data = train_test_split(
         protein_data, test_size=0.2, random_state=42
     )
     val_data, test_data = train_test_split(temp_data, test_size=0.5, random_state=42)
-
-    print("4")
 
     # Step 2: Create DataLoader objects for each subset
     train_loader = DataLoader(train_data, batch_size=batch_size, shuffle=True)
@@ -139,17 +130,8 @@ def main():
 
     optimizer = optim.Adam(model.parameters(), lr=lr, weight_decay=weight_decay)
 
-    print("5")
-
     if args.tensorboard:
-        writer = create_summary_writer(
-            lr,
-            weight_decay,
-            hidden_dim,
-            num_equivariant_layers
-        )
-
-    print("6")
+        writer = create_summary_writer(lr, weight_decay, hidden_dim, num_layers)
 
     # # early stopping
     early_stopper = EarlyStopper(patience=10, min_delta=0.005)
@@ -159,18 +141,13 @@ def main():
     best_train_loss = float("inf")
     best_epoch = 0
 
-    print("7")
-
     for epoch in range(0, args.epochs):
         train_loss = train(model, optimizer, epoch, train_loader)
-        print("8")
         if args.tensorboard:
             writer.add_scalar("Loss/train", train_loss, epoch)
 
         val_loss = val(model, epoch, val_loader, "val")
         test_loss = val(model, epoch, test_loader, "test")
-
-        print("9")
 
         if args.tensorboard:
             writer.add_scalar("Loss/val", val_loss, epoch)
@@ -202,17 +179,19 @@ def main():
 
     return best_train_loss, best_val_loss, best_test_loss, best_epoch, total_params
 
+
 def add_negative_samples(task_indices, labels, num_tasks=4598):
     new_task_indices = task_indices.clone()
     new_labels = labels.clone()
     new_labels[:, 1] = 2
-    new_task_indices[:, 1] = torch.randint(low=0, high=num_tasks, size=(new_task_indices.shape[0],), device=device)
+    new_task_indices[:, 1] = torch.randint(
+        low=0, high=num_tasks, size=(new_task_indices.shape[0],), device=device
+    )
 
     task_indices = torch.cat((task_indices, new_task_indices), dim=0)
     labels = torch.cat((labels, new_labels), dim=0)
 
     return task_indices, labels
-
 
 
 def train(model, optimizer, epoch, loader):
@@ -227,9 +206,10 @@ def train(model, optimizer, epoch, loader):
     FN = 0
 
     for data in tqdm(loader):
-        print("12")
         # features h = (atom_types, structure_features)
-        h = torch.cat((data.atom_types.view(-1, 1), data.structure_features), dim=-1).to(device)
+        h = torch.cat(
+            (data.atom_types.view(-1, 1), data.structure_features), dim=-1
+        ).to(device)
         x = data.pos.to(device)
         edge_index = data.edge_index.to(device)
         tasks_indices = data.task_indices.to(device)
@@ -239,36 +219,28 @@ def train(model, optimizer, epoch, loader):
         # batch_size = number of graphs (each graph represents a protein)
         batch_size = data.ptr.size(0) - 1
 
-        print("10")
-
         tasks_indices, labels = add_negative_samples(tasks_indices, labels)
 
-        print("11")
-
         # dictionary mapping b (protein idx) -> (num_tasks_for_protein_b, classes)
-        y_pred_dict = model(h, x, edge_index, edge_attr, batch, tasks_indices)
-
-        print("13")
+        y_pred_dict = model(
+            h, x, edge_index, edge_attr, batch, tasks_indices, batch_size
+        )
 
         loss = 0
         protein_idxs = tasks_indices[:, 0]
         unique_protein_idxs = torch.unique(protein_idxs)
-        print("14")
         for b in range(batch_size):
             protein_idx = unique_protein_idxs[b]
-            print("15")
             mask = protein_idxs == protein_idx
-            print("16")
             y = labels[:, 1][mask]
             y_pred = y_pred_dict[b]
-            print("17")
 
             preds = torch.argmax(y_pred, dim=-1)
             TN += torch.logical_and(preds == y, y == 2).sum()
             TP += torch.logical_and(preds == y, y != 2).sum()
             FP += torch.logical_and(preds != y, y == 2).sum()
             FN += torch.logical_and(preds != y, y != 2).sum()
-            
+
             protein_loss = ce_loss(y_pred, y)
 
             num_protein_tasks = y_pred.size(0)
@@ -323,7 +295,9 @@ def val(model, epoch, loader, partition):
             tasks_indices, labels = add_negative_samples(tasks_indices, labels)
 
             # dictionary mapping b (protein idx) -> (num_tasks_for_protein_b, classes)
-            y_pred_dict = model(h, x, edge_index, edge_attr, batch, tasks_indices)
+            y_pred_dict = model(
+                h, x, edge_index, edge_attr, batch, tasks_indices, batch_size
+            )
 
             loss = 0
             protein_idxs = tasks_indices[:, 0]
