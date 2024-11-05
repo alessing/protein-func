@@ -18,7 +18,7 @@ parser = argparse.ArgumentParser(
     description="Protein Function Prediction with E(3)-Equivariant GNNs and Multi-task Learning"
 )
 
-NUM_TASKS = 4598
+# NUM_TASKS = 4598
 
 
 def str_to_bool(value):
@@ -34,6 +34,76 @@ parser.add_argument(
     type=int,
     default=100,
     help="number of epochs to train (default: 10)",
+)
+
+parser.add_argument(
+    "--batch_size",
+    type=int,
+    default=16,
+    help="batch size",
+)
+
+parser.add_argument(
+    "--num_layers",
+    type=int,
+    default=16,
+    help="number of layers in spatial model",
+)
+
+parser.add_argument(
+    "--feature_dim",
+    type=int,
+    default=11,
+    help="feature dimension",
+)
+
+parser.add_argument(
+    "--edge_dim",
+    type=int,
+    default=0,
+    help="edge feature dimension",
+)
+
+parser.add_argument(
+    "--hidden_dim",
+    type=int,
+    default=256,
+    help="hidden dimension",
+)
+
+parser.add_argument(
+    "--position_dim",
+    type=int,
+    default=3,
+    help="dimension of positions of atoms",
+)
+
+parser.add_argument(
+    "--task_embed_dim",
+    type=int,
+    default=128,
+    help="task embedding latent dimension",
+)
+
+parser.add_argument(
+    "--num_tasks",
+    type=int,
+    default=4598,
+    help="number of tasks",
+)
+
+parser.add_argument(
+    "--num_classes",
+    type=int,
+    default=3,
+    help="number of classes",
+)
+
+parser.add_argument(
+    "--model_type",
+    type=str,
+    default="egnn",
+    help="Model type, either EGNN or GAT (default: egnn)",
 )
 
 parser.add_argument("--weight_decay", type=float, default=1e-6, help="weight decay")
@@ -84,16 +154,16 @@ class EarlyStopper:
 
 
 def main():
-    batch_size = 16
-    num_layers = 8
-    feature_dim = 11
-    edge_dim = 0  # for now (I think we should include one-hot encoded bond types)
-    hidden_dim = 256
-    task_embed_dim = 128
-    num_tasks = NUM_TASKS  # this will vary for each protein--for now we hard code it
-    num_classes = 3
-    position_dim = 3
-    model_type = "egnn"  # or "gat"
+    batch_size = args.batch_size
+    num_layers = args.num_layers
+    feature_dim = args.feature_dim
+    edge_dim = args.edge_dim
+    hidden_dim = args.hidden_dim
+    task_embed_dim = args.task_embed_dim
+    num_tasks = args.num_tasks
+    num_classes = args.num_classes
+    position_dim = args.position_dim
+    model_type = args.model_type
 
     model = FuncGNN(
         num_layers,
@@ -107,9 +177,7 @@ def main():
         model_type=model_type,
     ).to(device)
 
-    protein_data, dl = get_dataloader(
-        DATASET_DIR, batch_size=batch_size
-    )  # TODO: Matt point to dir
+    protein_data, dl = get_dataloader(DATASET_DIR, batch_size=batch_size)
     # protein_data, dl = create_fake_dataloader(num_proteins=1000, num_tasks=4598)
 
     train_data, temp_data = train_test_split(
