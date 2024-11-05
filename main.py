@@ -317,8 +317,8 @@ def train(model, optimizer, epoch, loader):
             if not (torch.isnan(new_loss).any() or torch.isinf(new_loss).any()):
                 print(new_loss)
                 loss += new_loss
-            else:
-                loss += torch.tensor(0., device=device)
+            #else:
+                #loss += torch.tensor(0., device=device)
 
         optimizer.zero_grad()
 
