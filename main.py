@@ -312,8 +312,9 @@ def train(model, optimizer, epoch, loader):
             protein_loss = ce_loss(y_pred, y)
 
             num_protein_tasks = y_pred.size(0)
-            new_loss =  protein_loss / num_protein_tasks
-            if not (torch.isnan(new_loss).any() and torch.isinf(new_loss).any()):
+            new_loss =  protein_loss #/ num_protein_tasks
+            #HACK ensure loss is real num
+            if not (torch.isnan(new_loss).any() or torch.isinf(new_loss).any()):
                 print(new_loss)
                 loss += new_loss
             else:
@@ -390,7 +391,7 @@ def val(model, epoch, loader, partition):
                 protein_loss = ce_loss(y_pred, y)
                 # print(f"Protein loss: {protein_loss / y_pred.size(0)} for protein: {b}")
                 num_protein_tasks = y_pred.size(0)
-                loss += protein_loss / num_protein_tasks
+                loss += protein_loss #/ num_protein_tasks
 
             res["loss"] += loss.item()
             res["counter"] += batch_size
