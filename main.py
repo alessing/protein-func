@@ -102,7 +102,7 @@ parser.add_argument(
 parser.add_argument(
     "--model_type",
     type=str,
-    default="egnn",
+    default="egnn_t0",
     help="Model type, either EGNN or GAT (default: egnn)",
 )
 
