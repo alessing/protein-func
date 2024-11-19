@@ -297,6 +297,7 @@ def train(model, optimizer, epoch, loader):
         loss = 0
         protein_idxs = tasks_indices[:, 0]
         unique_protein_idxs = torch.unique(protein_idxs)
+        valid_loss = False
         for b in range(batch_size):
             protein_idx = unique_protein_idxs[b]
             mask = protein_idxs == protein_idx
@@ -309,17 +310,27 @@ def train(model, optimizer, epoch, loader):
             FP += torch.logical_and(preds != y, y == 2).sum()
             FN += torch.logical_and(preds != y, y != 2).sum()
 
+            #print(y_pred)
             protein_loss = ce_loss(y_pred, y)
 
             num_protein_tasks = y_pred.size(0)
-            loss += protein_loss / num_protein_tasks
+            new_loss =  protein_loss #/ num_protein_tasks
+            #print(new_loss)
+            #HACK ensure loss is real num
+            if not (torch.isnan(new_loss).any() or torch.isinf(new_loss).any()):
+                valid_loss = True
+                loss += new_loss
+            #else:
+                #loss += torch.tensor(0., device=device)
 
-        optimizer.zero_grad()
+        if valid_loss:
+            optimizer.zero_grad()
 
-        loss.backward()
-        optimizer.step()
-        res["loss"] += loss.item()
-        res["counter"] += batch_size
+            loss.backward()
+            torch.nn.utils.clip_grad_norm_(model.parameters(), 0.5)
+            optimizer.step()
+            res["loss"] += loss.item()
+            res["counter"] += batch_size
 
     F1 = TP / (TP + 0.5 * (FP + FN))
     acc = (TP + TN) / (TP + TN + FP + FN)
@@ -385,7 +396,7 @@ def val(model, epoch, loader, partition):
                 protein_loss = ce_loss(y_pred, y)
                 # print(f"Protein loss: {protein_loss / y_pred.size(0)} for protein: {b}")
                 num_protein_tasks = y_pred.size(0)
-                loss += protein_loss / num_protein_tasks
+                loss += protein_loss #/ num_protein_tasks
 
             res["loss"] += loss.item()
             res["counter"] += batch_size
