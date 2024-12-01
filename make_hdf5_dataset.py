@@ -43,18 +43,21 @@ def save_hdf5(filename, protein_funcs, parser):
     protein_data = protein_funcs[protein_funcs["DB_Object_ID"] == uniprot_id]
     if len(protein_data):
         structure = parser.get_structure(uniprot_id, f"{RAW_DATA}/{ALPHA_FOLD_DIR}/{filename}")
-
-        num_atoms = 0
+        
         pos = []
         atom_type = []
-        for atom in structure.get_atoms():
-            num_atoms += 1
-            pos.append(atom.get_coord())
-            atom_type.append(PERIODIC_TABLE_IDX[atom.element])
+        pLDDTs = []  # score scores (https://alphafold.ebi.ac.uk/faq)
+        for res in structure.get_residues():
+            pLDDT = 0  # confidence score of residue
+            for atom in res:
+                pLDDT = atom.get_bfactor()  # all atoms in a residue have the same pLDDT
+                pos.append(atom.get_coord())
+                atom_type.append(PERIODIC_TABLE_IDX[atom.element])
+            pLDDTs.append(pLDDT)
         pos = torch.tensor(np.array(pos), device=DEVICE)
         atom_type = np.array(atom_type)
+        confidence_score = sum(pLDDTs) / len(pLDDTs)
         
-
         pos_diffs = pos[:, np.newaxis, :] - pos[np.newaxis, :, :]
         distances = torch.sqrt(torch.sum(pos_diffs * pos_diffs, axis=2))
         adj_matrix = torch.where(distances < 3, 1.0, 0.0)
@@ -70,6 +73,7 @@ def save_hdf5(filename, protein_funcs, parser):
         with h5py.File(f"{PROCESSED_DATA}/protein_inputs/{uniprot_id}.hdf5", 'w') as f:
             f.create_dataset('pos', data=pos.cpu().numpy())
             f.create_dataset('atom_type', data=atom_type)
+            f.create_dataset('confidence_score', data=confidence_score)
             f.create_dataset('adj_feats', data=adj_feats.cpu().numpy())
             f.create_dataset('edge_index', data=edge_index)
             f.create_dataset('task_index', data=task_index)
