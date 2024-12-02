@@ -65,7 +65,11 @@ def save_hdf5(filename, protein_funcs, parser):
         edge_index_tensor = torch.nonzero(torch.triu(adj_matrix))  # Mask out lower triangle, and get i and j of edges
         edge_index = edge_index_tensor.T.cpu().numpy()
 
-        adj_feats = adjacency_features(adj_matrix.to_sparse())
+        adj_node_feats = adjacency_features(adj_matrix.to_sparse())
+
+        edge_dists = distances * torch.where(distances < 3, 1.0, 0.0)
+        edge_dists = edge_dists[edge_index[0], edge_index[1]]
+        edge_feats = np.vstack((atom_type[edge_index], edge_dists))  # row 1 is atom type 1, row 2 is atom type 2, row 3 is dist
 
         task_index = ast.literal_eval(protein_data["GO_Idx"].iloc[0])
         labels = ast.literal_eval(protein_data["Qualifier_Idx"].iloc[0])
@@ -74,7 +78,8 @@ def save_hdf5(filename, protein_funcs, parser):
             f.create_dataset('pos', data=pos.cpu().numpy())
             f.create_dataset('atom_type', data=atom_type)
             f.create_dataset('confidence_score', data=confidence_score)
-            f.create_dataset('adj_feats', data=adj_feats.cpu().numpy())
+            f.create_dataset('adj_feats', data=adj_node_feats.cpu().numpy())  # TODO: rename to adj_node_feats?
+            f.create_dataset('edge_feats', data=edge_feats)
             f.create_dataset('edge_index', data=edge_index)
             f.create_dataset('task_index', data=task_index)
             f.create_dataset('labels', data=labels)
