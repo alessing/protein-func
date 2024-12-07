@@ -119,8 +119,8 @@ args = parser.parse_args()
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 loss_mse = nn.MSELoss()
 
-DATASET_DIR = "data/processed_data/protein_inputs"
-# DATASET_DIR = "temp_proteins"
+#DATASET_DIR = "data/processed_data/protein_inputs"
+#DATASET_DIR = "data/processed_data/test_dataset"
 
 
 def create_summary_writer(lr, weight_decay, hidden_size, num_equivariant_layers):
@@ -177,8 +177,8 @@ def main():
         model_type=model_type,
     ).to(device)
 
-    protein_data, dl = get_dataloader(DATASET_DIR, batch_size=batch_size)
-    # protein_data, dl = create_fake_dataloader(num_proteins=1000, num_tasks=4598)
+    #protein_data, dl = get_dataloader(DATASET_DIR, batch_size=batch_size)
+    protein_data, dl = create_fake_dataloader(num_proteins=1000, num_tasks=4598)
 
     train_data, temp_data = train_test_split(
         protein_data, test_size=0.2, random_state=42
