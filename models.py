@@ -436,22 +436,27 @@ class FuncGNN(nn.Module):
 
         # maps protein idx b ->pred[b] (prediction for protein b)
         out = {}
+        # iterate over batch of proteins
         for b in range(batch_size):
             protein_idx = unique_protein_idxs[b]
             mask = protein_idxs == protein_idx
-            # task indices corresponding to protein protein_idx
-            task_idxs_for_protein = task_idxs[mask]
-            # get the task embeddings for these indices
-            task_embeddings_for_protein = self.tasks_embed(task_idxs_for_protein)
+
+            # indices for all tasks corresponding to protein protein_idx
+            tasks_indices_for_protein = task_idxs[mask]
+            # get the task embeddings for these indices (i.e. for each task relevant to the protein)
+            # this will give (num_tasks, task_embedding_dim)
+            tasks_embedding_for_protein = self.tasks_embed(tasks_indices_for_protein)
 
             # concatenate them to the prediction for protein protein_idx
             # need to tile the prediction for protein_idx (len of task_idxs_for_protein times)
             # (hidden_dim) -> (num_tasks_for_protein, hidden_dim)
-            P = p[b].repeat(len(task_idxs_for_protein), 1)
+            P = p[b].repeat(len(tasks_indices_for_protein), 1)
 
-            # Concatenate P (num_tasks_for_protein, hidden_dim) to task_embeddings_for_protein (num_tasks_for_protein, task_embed_dim)
+            # Concatenate P (num_tasks_for_protein, hidden_dim) to tasks_embedding_for_protein (num_tasks_for_protein, task_embed_dim)
             # to get (num_tasks_for_protein, hidden_dim + task_embed_dim)
-            PT = torch.cat((P, task_embeddings_for_protein), dim=-1)
+            PT = torch.cat((P, tasks_embedding_for_protein), dim=-1)
+
+            # maps PT to (num_tasks_for_protein, num_classes)
             y_pred = self.mlp(PT)
             out[b] = y_pred
 
