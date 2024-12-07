@@ -298,9 +298,11 @@ def train(model, optimizer, epoch, loader):
         protein_idxs = tasks_indices[:, 0]
         unique_protein_idxs = torch.unique(protein_idxs)
         valid_loss = False
+        # iterate over batch of proteins
         for b in range(batch_size):
             protein_idx = unique_protein_idxs[b]
             mask = protein_idxs == protein_idx
+            # labels corresponding to protein with protein_idx
             y = labels[:, 1][mask]
             y_pred = y_pred_dict[b]
 
@@ -310,7 +312,6 @@ def train(model, optimizer, epoch, loader):
             FP += torch.logical_and(preds != y, y == 2).sum()
             FN += torch.logical_and(preds != y, y != 2).sum()
 
-            # print(y_pred)
             protein_loss = ce_loss(y_pred, y)
 
             num_protein_tasks = y_pred.size(0)
