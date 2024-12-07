@@ -31,7 +31,6 @@ DEVICE = 'cuda' if torch.cuda.is_available() else 'cpu'
 def adjacency_features(adj_matrix):
     structure_features = torch.ones((adj_matrix.shape[0], D), device=DEVICE)
     Apow = adj_matrix
-    indices = torch.arange(Apow.size(0))
     for d in range(1, D):
         structure_features[:, d] = torch.diag(Apow.to_dense())
         if d < D-1:
