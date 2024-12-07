@@ -310,18 +310,18 @@ def train(model, optimizer, epoch, loader):
             FP += torch.logical_and(preds != y, y == 2).sum()
             FN += torch.logical_and(preds != y, y != 2).sum()
 
-            #print(y_pred)
+            # print(y_pred)
             protein_loss = ce_loss(y_pred, y)
 
             num_protein_tasks = y_pred.size(0)
-            new_loss =  protein_loss #/ num_protein_tasks
-            #print(new_loss)
-            #HACK ensure loss is real num
+            new_loss = protein_loss  # / num_protein_tasks
+            # print(new_loss)
+            # HACK ensure loss is real num
             if not (torch.isnan(new_loss).any() or torch.isinf(new_loss).any()):
                 valid_loss = True
                 loss += new_loss
-            #else:
-                #loss += torch.tensor(0., device=device)
+            # else:
+            # loss += torch.tensor(0., device=device)
 
         if valid_loss:
             optimizer.zero_grad()
@@ -396,7 +396,7 @@ def val(model, epoch, loader, partition):
                 protein_loss = ce_loss(y_pred, y)
                 # print(f"Protein loss: {protein_loss / y_pred.size(0)} for protein: {b}")
                 num_protein_tasks = y_pred.size(0)
-                loss += protein_loss #/ num_protein_tasks
+                loss += protein_loss  # / num_protein_tasks
 
             res["loss"] += loss.item()
             res["counter"] += batch_size
