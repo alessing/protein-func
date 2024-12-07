@@ -6,6 +6,7 @@ import ast
 from Bio import PDB
 from tqdm import tqdm
 import torch
+import argparse
 
 RAW_DATA = "data/raw_data"
 ALPHA_FOLD_DIR = "UP000005640_9606_HUMAN_v4"
@@ -25,10 +26,9 @@ PERIODIC_TABLE_IDX = {
     'Rg': 110, 'Cn': 111, 'Nh': 112, 'Fl': 113, 'Mc': 114, 'Lv': 115, 'Ts': 116, 'Og': 117
 }
 
-D = 10
 DEVICE = 'cuda' if torch.cuda.is_available() else 'cpu'
 
-def adjacency_features(adj_matrix):
+def adjacency_features(adj_matrix, D):
     structure_features = torch.ones((adj_matrix.shape[0], D), device=DEVICE)
     Apow = adj_matrix
     for d in range(1, D):
@@ -37,7 +37,7 @@ def adjacency_features(adj_matrix):
             Apow = adj_matrix @ Apow
     return structure_features
 
-def save_hdf5(filename, protein_funcs, parser):
+def save_hdf5(filename, protein_funcs, parser, D):
     uniprot_id = filename.split("-")[1]
     protein_data = protein_funcs[protein_funcs["DB_Object_ID"] == uniprot_id]
     if len(protein_data):
@@ -64,7 +64,7 @@ def save_hdf5(filename, protein_funcs, parser):
         edge_index_tensor = torch.nonzero(torch.triu(adj_matrix))  # Mask out lower triangle, and get i and j of edges
         edge_index = edge_index_tensor.T.cpu().numpy()
 
-        adj_node_feats = adjacency_features(adj_matrix.to_sparse())
+        adj_node_feats = adjacency_features(adj_matrix.to_sparse(), D)
 
         edge_dists = distances * torch.where(distances < 3, 1.0, 0.0)
         edge_dists = edge_dists[edge_index[0], edge_index[1]]
@@ -76,7 +76,7 @@ def save_hdf5(filename, protein_funcs, parser):
         with h5py.File(f"{PROCESSED_DATA}/protein_inputs/{uniprot_id}.hdf5", 'w') as f:
             f.create_dataset('pos', data=pos.cpu().numpy())
             f.create_dataset('atom_type', data=atom_type)
-            f.create_dataset('confidence_score', data=confidence_score)
+            f.create_dataset('confidence_score', data=[confidence_score])
             f.create_dataset('adj_feats', data=adj_node_feats.cpu().numpy())  # TODO: rename to adj_node_feats?
             f.create_dataset('edge_feats', data=edge_feats)
             f.create_dataset('edge_index', data=edge_index)
@@ -84,11 +84,19 @@ def save_hdf5(filename, protein_funcs, parser):
             f.create_dataset('labels', data=labels)
 
 def main():
+    arg_parser = argparse.ArgumentParser()
+    arg_parser.add_argument(
+        "-d",
+        type=int,
+        default=10
+    )
+    args = arg_parser.parse_args()
+
     parser = PDB.PDBParser()
     protein_funcs = pd.read_csv(f"{PROCESSED_DATA}/protein_functions.csv")
     for filename in tqdm(os.listdir(f"{RAW_DATA}/{ALPHA_FOLD_DIR}")):
         if filename[-4:] == ".pdb":
-            save_hdf5(filename, protein_funcs, parser)
+            save_hdf5(filename, protein_funcs, parser, args.d)
 
 if __name__ == '__main__':
     main()
