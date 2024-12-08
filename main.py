@@ -46,7 +46,7 @@ parser.add_argument(
 parser.add_argument(
     "--num_layers",
     type=int,
-    default=16,
+    default=1,
     help="number of layers in spatial model",
 )
 
@@ -67,7 +67,7 @@ parser.add_argument(
 parser.add_argument(
     "--hidden_dim",
     type=int,
-    default=256,
+    default=5,
     help="hidden dimension",
 )
 
@@ -114,13 +114,15 @@ parser.add_argument(
     "--tensorboard", type=str_to_bool, default=False, help="Uses tensorboard"
 )
 
+parser.add_argument("--weight_loss_by_conf_score", action="store_true")
+
 args = parser.parse_args()
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 loss_mse = nn.MSELoss()
 
-#DATASET_DIR = "data/processed_data/protein_inputs"
-#DATASET_DIR = "data/processed_data/test_dataset"
+DATASET_DIR = "data/processed_data/protein_inputs"
+# DATASET_DIR = "data/processed_data/hdf5_files_d_10"
 
 
 def create_summary_writer(lr, weight_decay, hidden_size, num_equivariant_layers):
@@ -164,6 +166,10 @@ def main():
     num_classes = args.num_classes
     position_dim = args.position_dim
     model_type = args.model_type
+    weight_loss_by_conf_score = args.weight_loss_by_conf_score
+
+    protein_data, dl, edge_types = get_dataloader(DATASET_DIR, batch_size=batch_size)
+    # protein_data, dl = create_fake_dataloader(num_proteins=1000, num_tasks=4598)
 
     model = FuncGNN(
         num_layers,
@@ -172,13 +178,11 @@ def main():
         hidden_dim,
         task_embed_dim,
         num_tasks,
+        edge_types,
         position_dim,
         num_classes,
         model_type=model_type,
     ).to(device)
-
-    #protein_data, dl = get_dataloader(DATASET_DIR, batch_size=batch_size)
-    protein_data, dl = create_fake_dataloader(num_proteins=1000, num_tasks=4598)
 
     train_data, temp_data = train_test_split(
         protein_data, test_size=0.2, random_state=42
@@ -210,12 +214,14 @@ def main():
     best_epoch = 0
 
     for epoch in range(0, args.epochs):
-        train_loss = train(model, optimizer, epoch, train_loader)
+        train_loss = train(
+            model, optimizer, epoch, train_loader, weight_loss_by_conf_score
+        )
         if args.tensorboard:
             writer.add_scalar("Loss/train", train_loss, epoch)
 
-        val_loss = val(model, epoch, val_loader, "val")
-        test_loss = val(model, epoch, test_loader, "test")
+        val_loss = val(model, epoch, val_loader, "val", weight_loss_by_conf_score)
+        test_loss = val(model, epoch, test_loader, "test", weight_loss_by_conf_score)
 
         if args.tensorboard:
             writer.add_scalar("Loss/val", val_loss, epoch)
@@ -262,7 +268,7 @@ def add_negative_samples(task_indices, labels, num_tasks=4598):
     return task_indices, labels
 
 
-def train(model, optimizer, epoch, loader):
+def train(model, optimizer, epoch, loader, weight_loss_by_conf_score=False):
     model.train()
 
     ce_loss = torch.nn.CrossEntropyLoss()
@@ -282,7 +288,7 @@ def train(model, optimizer, epoch, loader):
         edge_index = data.edge_index.to(device)
         tasks_indices = data.task_indices.to(device)
         labels = data.labels.to(device)
-        edge_attr = None
+        edge_attr = data.edge_attr.to(device)
         batch = data.batch.to(device)
         # batch_size = number of graphs (each graph represents a protein)
         batch_size = data.ptr.size(0) - 1
@@ -313,6 +319,8 @@ def train(model, optimizer, epoch, loader):
             FN += torch.logical_and(preds != y, y != 2).sum()
 
             protein_loss = ce_loss(y_pred, y)
+            if weight_loss_by_conf_score:
+                protein_loss *= data.conf_score[b]
 
             num_protein_tasks = y_pred.size(0)
             new_loss = protein_loss  # / num_protein_tasks
@@ -345,7 +353,7 @@ def train(model, optimizer, epoch, loader):
     return res["loss"] / res["counter"]
 
 
-def val(model, epoch, loader, partition):
+def val(model, epoch, loader, partition, weight_loss_by_conf_score=False):
     model.eval()
 
     ce_loss = torch.nn.CrossEntropyLoss()
@@ -367,7 +375,7 @@ def val(model, epoch, loader, partition):
             edge_index = data.edge_index
             tasks_indices = data.task_indices
             labels = data.labels
-            edge_attr = None
+            edge_attr = data.edge_attr
             batch = data.batch
             # batch_size = number of graphs (each graph represents a protein)
             batch_size = data.ptr.size(0) - 1
@@ -395,6 +403,8 @@ def val(model, epoch, loader, partition):
                 FN += torch.logical_and(preds != y, y != 2).sum()
 
                 protein_loss = ce_loss(y_pred, y)
+                if weight_loss_by_conf_score:
+                    protein_loss *= data.conf_score[b]
                 # print(f"Protein loss: {protein_loss / y_pred.size(0)} for protein: {b}")
                 num_protein_tasks = y_pred.size(0)
                 loss += protein_loss  # / num_protein_tasks
