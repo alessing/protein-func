@@ -159,30 +159,46 @@ class EGNN(nn.Module):
 
 
 # Adapted from: https://projects.volkamerlab.org/teachopencadd/talktorials/T036_e3_equivariant_gnn.html
-
-
 class EquivariantMPLayer(nn.Module):
     def __init__(
         self,
         in_channels: int,
         hidden_channels: int,
         act: nn.Module,
+        edge_types: torch.Tensor,
+        rank: int,
     ) -> None:
         super().__init__()
         self.act = act
         self.residual_proj = nn.Linear(in_channels, hidden_channels, bias=False)
+        self.edge_types = edge_types
+        self.rank = rank
+        self.hidden_channels = hidden_channels
 
         # Messages will consist of two (source and target) node embeddings and a scalar distance
-        message_input_size = 2 * in_channels + 1
+        self.message_input_size = 2 * in_channels + 1
 
-        # equation (3) "phi_l" NN
-        self.message_mlp = nn.Sequential(
-            nn.Linear(message_input_size, hidden_channels),
-            act,
+        self.weight_dict = {}
+
+        # edge_types is a dict from (source_atom_type, target_atom_type) to edge_type_idx
+        for edge_type_idx in edge_types.values():
+            # A, B matrix for each edge type r
+            # Each will have bias because it's an r-dim vector, which is small
+            A_r = nn.Linear(self.rank, self.hidden_channels, bias=True)
+            B_r = nn.Linear(self.message_input_size, self.rank, bias=True)
+            self.weight_dict[f"{edge_type_idx}_A"] = A_r
+            self.weight_dict[f"{edge_type_idx}_B"] = B_r
+
+        self.weight_dict = nn.ModuleDict(self.weight_dict)
+
+        # No bias
+        self.W_shared = nn.Linear(
+            self.message_input_size, self.hidden_channels, bias=False
         )
+
         # equation (4) "psi_l" NN
         self.node_update_mlp = nn.Sequential(
-            nn.Linear(in_channels + hidden_channels, hidden_channels),
+            nn.Linear(in_channels + self.hidden_channels, self.hidden_channels),
             act,
         )
 
@@ -190,34 +206,51 @@ class EquivariantMPLayer(nn.Module):
         self,
         source_node_embed,  # h_i
         target_node_embed,  # h_j
-        node_dist,  # d_ij
+        edge_feat,
     ):
         # implements equation (3)
-        message_repr = torch.cat(
-            (source_node_embed, target_node_embed, node_dist), dim=-1
-        )
-        return self.message_mlp(message_repr)
+        # atom_1_type, atom_2_type, node_dist = edge_feat[:, 0], edge_feat[:, 1], edge_feat[:, 2]
+        edge_type_idxs, node_dist = edge_feat[:, 0], edge_feat[:, 1]
+        num_edges = edge_feat.shape[0]
 
-    def compute_distances(self, node_pos, edge_index):
-        row, col = edge_index
-        xi, xj = node_pos[row], node_pos[col]
-        # relative squared distance
-        # implements equation (2) ||X_i - X_j||^2
-        rsdist = (xi - xj).pow(2).sum(1, keepdim=True)
-        return rsdist
+        unique_edge_type_idxs = torch.unique(edge_type_idxs)
 
-    def forward(
-        self,
-        node_embed,
-        node_pos,
-        edge_index,
-    ):
+        m_agg = torch.zeros((num_edges, self.hidden_channels))
+        for edge_type_idx in unique_edge_type_idxs:
+            # A_r, B_r = self.weight_dict[int(edge_type_idx.item())]
+            A_r = self.weight_dict[f"{int(edge_type_idx.item())}_A"]
+            B_r = self.weight_dict[f"{int(edge_type_idx.item())}_B"]
+
+            # for all edges in atom graph of protein, find edges with edge_type_idx
+            mask = edge_type_idxs == edge_type_idx
+
+            # only use the source and target embeddings (and dist) for the edges with edge_idx
+            source_node_embed_edge_type = source_node_embed[mask, :]
+            target_node_embed_edge_type = target_node_embed[mask, :]
+            node_dist_edge_type = node_dist[mask]
+            message_repr = torch.cat(
+                (
+                    source_node_embed_edge_type,
+                    target_node_embed_edge_type,
+                    node_dist_edge_type.unsqueeze(-1),
+                ),
+                dim=-1,
+            )
+
+            # Apply LoRA in a compositional manner
+            m_r = A_r(B_r(message_repr)) + self.W_shared(message_repr)
+
+            # place the messages corresponding to edge_type_idx in appropriate place
+            m_agg[mask, :] = m_r
+
+        return m_agg
+
+    def forward(self, node_embed, node_pos, edge_index, edge_attr):
         row, col = edge_index
-        dist = self.compute_distances(node_pos, edge_index)
 
         # compute messages "m_ij" from  equation (3)
         node_messages = self.node_message_function(
-            node_embed[row], node_embed[col], dist
+            node_embed[row], node_embed[col], edge_feat=edge_attr
         )
 
         # message sum aggregation in equation (4)
@@ -240,6 +273,8 @@ class EquivariantGNN(nn.Module):
         final_embedding_size=None,
         target_size: int = 1,
         num_mp_layers: int = 2,
+        rank=5,
+        edge_types=None,
     ) -> None:
         super().__init__()
         if final_embedding_size is None:
@@ -257,7 +292,7 @@ class EquivariantGNN(nn.Module):
         self.message_passing_layers = nn.ModuleList()
         channels = [hidden_channels] * (num_mp_layers) + [final_embedding_size]
         for d_in, d_out in zip(channels[:-1], channels[1:]):
-            layer = EquivariantMPLayer(d_in, d_out, self.act)
+            layer = EquivariantMPLayer(d_in, d_out, self.act, edge_types, rank)
             self.message_passing_layers.append(layer)
 
         # modules required for readout of a graph-level
@@ -269,7 +304,7 @@ class EquivariantGNN(nn.Module):
             nn.Linear(final_embedding_size, target_size),
         )
 
-    def encode(self, x, h, edge_index):
+    def encode(self, x, h, edge_index, edge_attr):
         # theory, equation (1)
         node_embed = self.f_initial_embed(h)
         # message passing
@@ -277,15 +312,15 @@ class EquivariantGNN(nn.Module):
         for mp_layer in self.message_passing_layers:
             # NOTE here we use the complete edge index defined by the transform earlier on
             # to implement the sum over $j \neq i$ in equation (4)
-            node_embed = mp_layer(node_embed, x, edge_index)
+            node_embed = mp_layer(node_embed, x, edge_index, edge_attr)
         return node_embed
 
     def _predict(self, node_embed, batch_index):
         aggr = self.aggregation(node_embed, batch_index)
         return self.f_predict(aggr)
 
-    def forward(self, x, h, edge_index, batch):
-        node_embed = self.encode(x, h, edge_index)
+    def forward(self, x, h, edge_index, edge_attr, batch):
+        node_embed = self.encode(x, h, edge_index, edge_attr)
         # pred = self._predict(node_embed, batch)
         # return pred
         return node_embed
@@ -348,6 +383,7 @@ class FuncGNN(nn.Module):
         hidden_dim,
         task_embed_dim,
         num_tasks,
+        edge_types,
         position_dim=3,
         num_classes=3,
         dropout=0.1,
@@ -358,6 +394,7 @@ class FuncGNN(nn.Module):
         self.T = num_tasks
         self.C = num_classes
         self.model_type = model_type
+        self.edge_types = edge_types
 
         if self.model_type == "egnn_old":
             spatial_layers = [
@@ -377,6 +414,7 @@ class FuncGNN(nn.Module):
                 final_embedding_size=hidden_dim,
                 target_size=hidden_dim,
                 num_mp_layers=num_layers,
+                edge_types=edge_types,
             )
         elif self.model_type == "gat":
             self.spatial_model = GAT(
@@ -416,7 +454,7 @@ class FuncGNN(nn.Module):
                 h, x = egnn(h, x, edge_index, edge_attr)
 
         elif self.model_type == "egnn_t0":
-            h = self.spatial_model(x, h, edge_index, batch)
+            h = self.spatial_model(x, h, edge_index, edge_attr, batch)
 
         elif self.model_type == "gat":
             input = torch.cat((h, x), dim=-1)
