@@ -76,7 +76,6 @@ def create_fake_dataloader(num_proteins=100, num_tasks=1000):
 
         pos = torch.rand((num_atoms, 3))
 
-
         d = Data(
             edge_index=edge_indices,
             atom_types=atom_types,
@@ -85,7 +84,7 @@ def create_fake_dataloader(num_proteins=100, num_tasks=1000):
             labels=labels,
             pos=pos,
             edge_attr=edge_feats.T,
-            conf_score=conf_score
+            conf_score=conf_score,
         )
 
         protein_datas.append(d)
@@ -101,8 +100,8 @@ def load_protein(prot_num, filename, edge_types):
         edge_index = torch.tensor(f["edge_index"][:], dtype=torch.long)
         task_index = torch.tensor(f["task_index"][:], dtype=torch.long)
         labels = torch.tensor(f["labels"][:], dtype=torch.long)
-        edge_feats = torch.tensor(f['edge_feats']).float()
-        conf_score = torch.tensor(f['confidence_score'][0]).float()
+        edge_feats = torch.tensor(f["edge_feats"]).float()
+        conf_score = torch.tensor(f["confidence_score"][0]).float()
 
         assert labels.shape == task_index.shape
         prot_num = torch.full_like(task_index, prot_num)
@@ -110,11 +109,11 @@ def load_protein(prot_num, filename, edge_types):
         labels = torch.stack((prot_num, labels), dim=1)
 
         edge_feats = torch.vstack((torch.zeros((1, edge_feats.shape[1])), edge_feats))
-        for i, edge_type in enumerate(edge_types.keys()):  
+        for i, edge_type in enumerate(edge_types.keys()):
             edge_type = torch.Tensor(edge_type)
             edge_mask = (edge_feats[1:3].T == edge_type).all(dim=1)
             edge_feats[0, edge_mask] = i
-        edge_feats = edge_feats[[0,3]]
+        edge_feats = edge_feats[[0, 3]]
 
         d = Data(
             edge_index=edge_index,
@@ -124,7 +123,7 @@ def load_protein(prot_num, filename, edge_types):
             labels=labels,
             pos=pos,
             edge_attr=edge_feats.T,
-            conf_score=conf_score
+            conf_score=conf_score,
         )
         return d
 
@@ -148,12 +147,12 @@ def get_dataset(dataset_dir):
         (15, 5): 12,
         (15, 6): 13,
         (15, 7): 14,
-        (15, 15): 15
+        (15, 15): 15,
     }
     for i, fname in tqdm(enumerate(glob.glob(os.path.join(dataset_dir, "*.hdf5")))):
         d = load_protein(i, fname, edge_types)
         dataset.append(d)
-    
+
     print(edge_types)
 
     return dataset, edge_types

@@ -159,8 +159,6 @@ class EGNN(nn.Module):
 
 
 # Adapted from: https://projects.volkamerlab.org/teachopencadd/talktorials/T036_e3_equivariant_gnn.html
-
-
 class EquivariantMPLayer(nn.Module):
     def __init__(
         self,
@@ -180,23 +178,23 @@ class EquivariantMPLayer(nn.Module):
         # Messages will consist of two (source and target) node embeddings and a scalar distance
         self.message_input_size = 2 * in_channels + 1
 
-        # equation (3) "phi_l" NN
-        # self.message_mlp = nn.Sequential(
-        #     nn.Linear(message_input_size, hidden_channels),
-        #     act,
-        # )
-
         self.weight_dict = {}
+
+        # edge_types is a dict from (source_atom_type, target_atom_type) to edge_type_idx
         for edge_type_idx in edge_types.values():
             # A, B matrix for each edge type r
+            # Each will have bias because it's an r-dim vector, which is small
             A_r = nn.Linear(self.rank, self.hidden_channels, bias=True)
             B_r = nn.Linear(self.message_input_size, self.rank, bias=True)
-            self.weight_dict[edge_type_idx] = (A_r, B_r)
+            self.weight_dict[f"{edge_type_idx}_A"] = A_r
+            self.weight_dict[f"{edge_type_idx}_B"] = B_r
 
-        # self.weight_dict = nn.ModuleDict(self.weight_dict)
+        self.weight_dict = nn.ModuleDict(self.weight_dict)
 
-
-        self.W_shared = nn.Linear(self.message_input_size, self.hidden_channels)
+        # No bias
+        self.W_shared = nn.Linear(
+            self.message_input_size, self.hidden_channels, bias=False
+        )
 
         # equation (4) "psi_l" NN
         self.node_update_mlp = nn.Sequential(
@@ -213,41 +211,41 @@ class EquivariantMPLayer(nn.Module):
         # implements equation (3)
         # atom_1_type, atom_2_type, node_dist = edge_feat[:, 0], edge_feat[:, 1], edge_feat[:, 2]
         edge_type_idxs, node_dist = edge_feat[:, 0], edge_feat[:, 1]
+        num_edges = edge_feat.shape[0]
 
         unique_edge_type_idxs = torch.unique(edge_type_idxs)
 
-        m_agg = torch.zeros(self.hidden_channels)
+        m_agg = torch.zeros((num_edges, self.hidden_channels))
         for edge_type_idx in unique_edge_type_idxs:
-            A_r, B_r = self.weight_dict[int(edge_type_idx.item())]
+            # A_r, B_r = self.weight_dict[int(edge_type_idx.item())]
+            A_r = self.weight_dict[f"{int(edge_type_idx.item())}_A"]
+            B_r = self.weight_dict[f"{int(edge_type_idx.item())}_B"]
 
-            # W_r = A_r @ B_r + self.W_shared
+            # for all edges in atom graph of protein, find edges with edge_type_idx
             mask = edge_type_idxs == edge_type_idx
 
+            # only use the source and target embeddings (and dist) for the edges with edge_idx
             source_node_embed_edge_type = source_node_embed[mask, :]
             target_node_embed_edge_type = target_node_embed[mask, :]
             node_dist_edge_type = node_dist[mask]
-            message_repr = torch.cat((source_node_embed_edge_type, target_node_embed_edge_type, node_dist_edge_type.unsqueeze(-1)), dim=-1)
+            message_repr = torch.cat(
+                (
+                    source_node_embed_edge_type,
+                    target_node_embed_edge_type,
+                    node_dist_edge_type.unsqueeze(-1),
+                ),
+                dim=-1,
+            )
 
+            # Apply LoRA in a compositional manner
             m_r = A_r(B_r(message_repr)) + self.W_shared(message_repr)
-            m_agg = m_agg + m_r.mean(dim=0)
 
-
-        m_agg = m_agg / len(unique_edge_type_idxs)
-        
+            # place the messages corresponding to edge_type_idx in appropriate place
+            m_agg[mask, :] = m_r
 
         return m_agg
 
-
-
-        # return self.message_mlp(message_repr)
-
-    def forward(
-        self,
-        node_embed,
-        node_pos,
-        edge_index,
-        edge_attr
-    ):
+    def forward(self, node_embed, node_pos, edge_index, edge_attr):
         row, col = edge_index
 
         # compute messages "m_ij" from  equation (3)

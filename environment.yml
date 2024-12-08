@@ -13,6 +13,7 @@ dependencies:
   - h5py
   - pandas
   - pytorch
+  - torch-scatter
   - pytorch-cuda=12.4
   - pyg
   - pip

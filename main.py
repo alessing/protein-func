@@ -46,7 +46,7 @@ parser.add_argument(
 parser.add_argument(
     "--num_layers",
     type=int,
-    default=16,
+    default=1,
     help="number of layers in spatial model",
 )
 
@@ -67,7 +67,7 @@ parser.add_argument(
 parser.add_argument(
     "--hidden_dim",
     type=int,
-    default=256,
+    default=5,
     help="hidden dimension",
 )
 
@@ -114,18 +114,15 @@ parser.add_argument(
     "--tensorboard", type=str_to_bool, default=False, help="Uses tensorboard"
 )
 
-parser.add_argument(
-    "--weight_loss_by_conf_score",
-    action='store_true'
-)
+parser.add_argument("--weight_loss_by_conf_score", action="store_true")
 
 args = parser.parse_args()
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 loss_mse = nn.MSELoss()
 
-#DATASET_DIR = "data/processed_data/protein_inputs"
-DATASET_DIR = "data/test_dataset"
+# DATASET_DIR = "data/processed_data/protein_inputs"
+DATASET_DIR = "data/processed_data/hdf5_files_d_10"
 
 
 def create_summary_writer(lr, weight_decay, hidden_size, num_equivariant_layers):
@@ -171,9 +168,8 @@ def main():
     model_type = args.model_type
     weight_loss_by_conf_score = args.weight_loss_by_conf_score
 
-
     protein_data, dl, edge_types = get_dataloader(DATASET_DIR, batch_size=batch_size)
-    #protein_data, dl = create_fake_dataloader(num_proteins=1000, num_tasks=4598)
+    # protein_data, dl = create_fake_dataloader(num_proteins=1000, num_tasks=4598)
 
     model = FuncGNN(
         num_layers,
@@ -218,7 +214,9 @@ def main():
     best_epoch = 0
 
     for epoch in range(0, args.epochs):
-        train_loss = train(model, optimizer, epoch, train_loader, weight_loss_by_conf_score)
+        train_loss = train(
+            model, optimizer, epoch, train_loader, weight_loss_by_conf_score
+        )
         if args.tensorboard:
             writer.add_scalar("Loss/train", train_loss, epoch)
 
@@ -377,7 +375,7 @@ def val(model, epoch, loader, partition, weight_loss_by_conf_score=False):
             edge_index = data.edge_index
             tasks_indices = data.task_indices
             labels = data.labels
-            edge_attr = None
+            edge_attr = data.edge_attr
             batch = data.batch
             # batch_size = number of graphs (each graph represents a protein)
             batch_size = data.ptr.size(0) - 1
