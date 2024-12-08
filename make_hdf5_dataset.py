@@ -29,7 +29,7 @@ PERIODIC_TABLE_IDX = {
 DEVICE = 'cuda' if torch.cuda.is_available() else 'cpu'
 
 def adjacency_features(adj_matrix, D):
-    adj_matrix = adj_matrix.to(device=DEVICE, dtype=torch.uint16)
+    adj_matrix = adj_matrix.to(device=DEVICE)
 
     structure_features = torch.ones((adj_matrix.shape[0], D), device=DEVICE)
     Apow = adj_matrix
@@ -76,7 +76,7 @@ def save_hdf5(filename, protein_funcs, parser, D):
 
         edge_dists = distances * torch.where(distances < 3, 1.0, 0.0)
         edge_dists = edge_dists[edge_index[0], edge_index[1]]
-        edge_feats = np.vstack((atom_type[edge_index], edge_dists))  # row 1 is atom type 1, row 2 is atom type 2, row 3 is dist
+        edge_feats = np.vstack((atom_type[edge_index], edge_dists.cpu()))  # row 1 is atom type 1, row 2 is atom type 2, row 3 is dist
 
         task_index = ast.literal_eval(protein_data["GO_Idx"].iloc[0])
         labels = ast.literal_eval(protein_data["Qualifier_Idx"].iloc[0])
