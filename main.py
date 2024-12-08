@@ -46,7 +46,7 @@ parser.add_argument(
 parser.add_argument(
     "--num_layers",
     type=int,
-    default=1,
+    default=16,
     help="number of layers in spatial model",
 )
 
@@ -67,7 +67,7 @@ parser.add_argument(
 parser.add_argument(
     "--hidden_dim",
     type=int,
-    default=5,
+    default=256,
     help="hidden dimension",
 )
 
