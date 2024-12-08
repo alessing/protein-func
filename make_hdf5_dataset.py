@@ -71,12 +71,15 @@ def save_hdf5(filename, protein_funcs, parser, D):
         edge_index_tensor = torch.nonzero(torch.triu(adj_matrix))  # Mask out lower triangle, and get i and j of edges
         edge_index = edge_index_tensor.T.cpu().numpy()
 
-        adj_node_feats = adjacency_features(adj_matrix.to_sparse(), D)
-        del adj_matrix
-
         edge_dists = distances * torch.where(distances < 3, 1.0, 0.0)
         edge_dists = edge_dists[edge_index[0], edge_index[1]]
-        edge_feats = np.vstack((atom_type[edge_index], edge_dists.cpu()))  # row 1 is atom type 1, row 2 is atom type 2, row 3 is dist
+        edge_dists = edge_dists.cpu()
+        edge_feats = np.vstack((atom_type[edge_index], edge_dists))  # row 1 is atom type 1, row 2 is atom type 2, row 3 is dist
+        del distances
+        del edge_dists
+
+        adj_node_feats = adjacency_features(adj_matrix.to_sparse(), D)
+        del adj_matrix
 
         task_index = ast.literal_eval(protein_data["GO_Idx"].iloc[0])
         labels = ast.literal_eval(protein_data["Qualifier_Idx"].iloc[0])
