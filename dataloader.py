@@ -67,11 +67,14 @@ def create_fake_dataloader(num_proteins=100, num_tasks=1000):
         task_indices = torch.randint(0, num_tasks, (num_tasks, 2), dtype=torch.long)
         # task_indices = torch.randint(1, num_functio, (num_tasks, 2), dtype=torch.long)
         labels = torch.randint_like(task_indices, low=0, high=2)
+        edge_feats = torch.rand((3, edge_indices.shape[1]))
+        conf_score = torch.rand((1,))
 
         labels[:, 0] = i
         task_indices[:, 0] = i
 
         pos = torch.rand((num_atoms, 3))
+
 
         d = Data(
             edge_index=edge_indices,
@@ -80,6 +83,8 @@ def create_fake_dataloader(num_proteins=100, num_tasks=1000):
             task_indices=task_indices,
             labels=labels,
             pos=pos,
+            edge_attr=edge_feats.T,
+            conf_score=conf_score
         )
 
         protein_datas.append(d)
@@ -95,6 +100,8 @@ def load_protein(prot_num, filename):
         edge_index = torch.tensor(f["edge_index"][:], dtype=torch.long)
         task_index = torch.tensor(f["task_index"][:], dtype=torch.long)
         labels = torch.tensor(f["labels"][:], dtype=torch.long)
+        edge_feats = torch.tensor(f['edge_feats'])
+        conf_score = torch.tensor(f['confidence_score'][0])
 
         assert labels.shape == task_index.shape
         prot_num = torch.full_like(task_index, prot_num)
@@ -108,6 +115,8 @@ def load_protein(prot_num, filename):
             task_indices=task_index,
             labels=labels,
             pos=pos,
+            edge_attr=edge_feats.T,
+            conf_score=conf_score
         )
         return d
 
