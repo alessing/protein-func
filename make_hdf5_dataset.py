@@ -37,6 +37,7 @@ def adjacency_features(adj_matrix, D):
         structure_features[:, d] = torch.diag(Apow.to_dense())
         if d < D-1:
             Apow = adj_matrix @ Apow
+        torch.cuda.empty_cache()
 
     adj_matrix = adj_matrix.to("cpu")
 
