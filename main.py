@@ -114,7 +114,7 @@ parser.add_argument(
     "--tensorboard", type=str_to_bool, default=False, help="Uses tensorboard"
 )
 
-parser.add_argument("--weight_loss_by_conf_score", action="store_true")
+parser.add_argument("--weight_loss_by_conf_score", type=str_to_bool, default=True)
 
 args = parser.parse_args()
 
@@ -125,9 +125,11 @@ DATASET_DIR = "data/processed_data/protein_inputs"
 # DATASET_DIR = "data/processed_data/hdf5_files_d_10"
 
 
-def create_summary_writer(lr, weight_decay, hidden_size, num_equivariant_layers):
+def create_summary_writer(
+    lr, weight_decay, hidden_size, num_layers, feature_dim, conf_scores
+):
     dt = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
-    log_dir = f"./runs/{dt}_funcgnn_lr_{lr}_wd_{weight_decay}_hid_size_{hidden_size}_num_equi_layers_{num_equivariant_layers}/"
+    log_dir = f"./runs/{dt}_funcgnn_lr_{lr}_wd_{weight_decay}_hid_size_{hidden_size}_num_equi_layers_{num_layers}_fdim_{feature_dim}_cs_{conf_scores}/"
 
     writer = SummaryWriter(log_dir)
     return writer
@@ -203,7 +205,14 @@ def main():
     optimizer = optim.Adam(model.parameters(), lr=lr, weight_decay=weight_decay)
 
     if args.tensorboard:
-        writer = create_summary_writer(lr, weight_decay, hidden_dim, num_layers)
+        writer = create_summary_writer(
+            lr,
+            weight_decay,
+            hidden_dim,
+            num_layers,
+            feature_dim,
+            weight_loss_by_conf_score,
+        )
 
     # # early stopping
     early_stopper = EarlyStopper(patience=10, min_delta=0.005)
@@ -214,18 +223,35 @@ def main():
     best_epoch = 0
 
     for epoch in range(0, args.epochs):
-        train_loss = train(
+        train_loss, train_F1, train_acc, train_precision, train_recall = train(
             model, optimizer, epoch, train_loader, weight_loss_by_conf_score
         )
         if args.tensorboard:
-            writer.add_scalar("Loss/train", train_loss, epoch)
+            writer.add_scalar("Train/Loss", train_loss, epoch)
+            writer.add_scalar("Train/F1", train_F1, epoch)
+            writer.add_scalar("Train/Acc", train_acc, epoch)
+            writer.add_scalar("Train/Precision", train_precision, epoch)
+            writer.add_scalar("Train/Recall", train_recall, epoch)
 
-        val_loss = val(model, epoch, val_loader, "val", weight_loss_by_conf_score)
-        test_loss = val(model, epoch, test_loader, "test", weight_loss_by_conf_score)
+        val_loss, val_F1, val_acc, val_precision, val_recall = val(
+            model, epoch, val_loader, "val", weight_loss_by_conf_score
+        )
+        test_loss, test_F1, test_acc, test_precision, test_recall = val(
+            model, epoch, test_loader, "test", weight_loss_by_conf_score
+        )
 
         if args.tensorboard:
-            writer.add_scalar("Loss/val", val_loss, epoch)
-            writer.add_scalar("Loss/test", test_loss, epoch)
+            writer.add_scalar("Val/Loss", val_loss, epoch)
+            writer.add_scalar("Val/F1", val_F1, epoch)
+            writer.add_scalar("Val/Acc", val_acc, epoch)
+            writer.add_scalar("Val/Precision", val_precision, epoch)
+            writer.add_scalar("Val/Recall", val_recall, epoch)
+
+            writer.add_scalar("Test/Loss", test_loss, epoch)
+            writer.add_scalar("Test/F1", test_F1, epoch)
+            writer.add_scalar("Test/Acc", test_acc, epoch)
+            writer.add_scalar("Test/Precision", test_precision, epoch)
+            writer.add_scalar("Test/Recall", test_recall, epoch)
 
         results["epochs"].append(epoch)
         results["losess"].append(test_loss)
@@ -239,7 +265,7 @@ def main():
 
             torch.save(
                 model.state_dict(),
-                f"best_models/funcgnn.pt",
+                f"best_models/funcgnn_lr_{lr}_wd_{weight_decay}_hid_size_{hidden_dim}_num_equi_layers_{num_layers}_fdim_{feature_dim}_cs_{weight_loss_by_conf_score}.pt",
             )
 
         print(
@@ -350,7 +376,7 @@ def train(model, optimizer, epoch, loader, weight_loss_by_conf_score=False):
         % ("train", epoch, res["loss"] / res["counter"], F1, acc, precision, recall)
     )
 
-    return res["loss"] / res["counter"]
+    return res["loss"] / res["counter"], F1, acc, precision, recall
 
 
 def val(model, epoch, loader, partition, weight_loss_by_conf_score=False):
@@ -421,7 +447,7 @@ def val(model, epoch, loader, partition, weight_loss_by_conf_score=False):
         % (partition, epoch, res["loss"] / res["counter"], F1, acc, precision, recall)
     )
 
-    return res["loss"] / res["counter"]
+    return res["loss"] / res["counter"], F1, acc, precision, recall
 
 
 if __name__ == "__main__":
