@@ -29,12 +29,17 @@ PERIODIC_TABLE_IDX = {
 DEVICE = 'cuda' if torch.cuda.is_available() else 'cpu'
 
 def adjacency_features(adj_matrix, D):
+    adj_matrix = adj_matrix.to(device=DEVICE, dtype=torch.uint16)
+
     structure_features = torch.ones((adj_matrix.shape[0], D), device=DEVICE)
     Apow = adj_matrix
     for d in range(1, D):
         structure_features[:, d] = torch.diag(Apow.to_dense())
         if d < D-1:
             Apow = adj_matrix @ Apow
+
+    adj_matrix = adj_matrix.to("cpu")
+
     return structure_features
 
 def save_hdf5(filename, protein_funcs, parser, D):
@@ -53,18 +58,21 @@ def save_hdf5(filename, protein_funcs, parser, D):
                 pos.append(atom.get_coord())
                 atom_type.append(PERIODIC_TABLE_IDX[atom.element])
             pLDDTs.append(pLDDT)
-        pos = torch.tensor(np.array(pos), device=DEVICE)
+        pos = torch.tensor(np.array(pos), device=DEVICE, dtype=torch.float16)
         atom_type = np.array(atom_type)
         confidence_score = sum(pLDDTs) / len(pLDDTs)
         
         pos_diffs = pos[:, np.newaxis, :] - pos[np.newaxis, :, :]
         distances = torch.sqrt(torch.sum(pos_diffs * pos_diffs, axis=2))
+        del pos_diffs
+
         adj_matrix = torch.where(distances < 3, 1.0, 0.0)
         adj_matrix.fill_diagonal_(0.0)  # Mask out self edges, which has dist 0
         edge_index_tensor = torch.nonzero(torch.triu(adj_matrix))  # Mask out lower triangle, and get i and j of edges
         edge_index = edge_index_tensor.T.cpu().numpy()
 
         adj_node_feats = adjacency_features(adj_matrix.to_sparse(), D)
+        del adj_matrix
 
         edge_dists = distances * torch.where(distances < 3, 1.0, 0.0)
         edge_dists = edge_dists[edge_index[0], edge_index[1]]
