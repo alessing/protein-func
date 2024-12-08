@@ -73,7 +73,7 @@ def save_hdf5(filename, protein_funcs, parser, D):
         task_index = ast.literal_eval(protein_data["GO_Idx"].iloc[0])
         labels = ast.literal_eval(protein_data["Qualifier_Idx"].iloc[0])
         
-        with h5py.File(f"{PROCESSED_DATA}/protein_inputs/{uniprot_id}.hdf5", 'w') as f:
+        with h5py.File(f"{PROCESSED_DATA}/hdf5_files_d_{D}/{uniprot_id}.hdf5", 'w') as f:
             f.create_dataset('pos', data=pos.cpu().numpy())
             f.create_dataset('atom_type', data=atom_type)
             f.create_dataset('confidence_score', data=[confidence_score])
