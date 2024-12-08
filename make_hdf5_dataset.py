@@ -29,7 +29,7 @@ PERIODIC_TABLE_IDX = {
 DEVICE = 'cuda' if torch.cuda.is_available() else 'cpu'
 
 def adjacency_features(adj_matrix, D):
-    adj_matrix = adj_matrix.to(device=DEVICE, dtype=torch.float16)
+    adj_matrix = adj_matrix.to(device=DEVICE, dtype=torch.float32)
 
     structure_features = torch.ones((adj_matrix.shape[0], D), device=DEVICE)
     Apow = adj_matrix
