@@ -44,6 +44,13 @@ parser.add_argument(
 )
 
 parser.add_argument(
+    "--rank",
+    type=int,
+    default=16,
+    help="rank for LoRA",
+)
+
+parser.add_argument(
     "--num_layers",
     type=int,
     default=16,
@@ -53,7 +60,7 @@ parser.add_argument(
 parser.add_argument(
     "--feature_dim",
     type=int,
-    default=11,
+    default=21,
     help="feature dimension",
 )
 
@@ -111,7 +118,7 @@ parser.add_argument("--weight_decay", type=float, default=1e-6, help="weight dec
 parser.add_argument("--lr", type=float, default=1e-4, help="learning rate")
 
 parser.add_argument(
-    "--tensorboard", type=str_to_bool, default=False, help="Uses tensorboard"
+    "--tensorboard", type=str_to_bool, default=True, help="Uses tensorboard"
 )
 
 parser.add_argument("--weight_loss_by_conf_score", type=str_to_bool, default=True)
@@ -121,15 +128,15 @@ args = parser.parse_args()
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 loss_mse = nn.MSELoss()
 
-DATASET_DIR = "data/processed_data/protein_inputs"
-# DATASET_DIR = "data/processed_data/hdf5_files_d_10"
+# DATASET_DIR = "data/processed_data/protein_inputs"
+DATASET_DIR = "data/processed_data/hdf5_files_d_20"
 
 
 def create_summary_writer(
     lr, weight_decay, hidden_size, num_layers, feature_dim, conf_scores
 ):
     dt = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
-    log_dir = f"./runs/{dt}_funcgnn_lr_{lr}_wd_{weight_decay}_hid_size_{hidden_size}_num_equi_layers_{num_layers}_fdim_{feature_dim}_cs_{conf_scores}/"
+    log_dir = f"./runs/{dt}_funcgnn_lr_{lr}_wd_{weight_decay}_hid_size_{hidden_size}_num_layers_{num_layers}_fdim_{feature_dim}_cs_{conf_scores}/"
 
     writer = SummaryWriter(log_dir)
     return writer
@@ -166,6 +173,7 @@ def main():
     task_embed_dim = args.task_embed_dim
     num_tasks = args.num_tasks
     num_classes = args.num_classes
+    rank = args.rank
     position_dim = args.position_dim
     model_type = args.model_type
     weight_loss_by_conf_score = args.weight_loss_by_conf_score
@@ -181,8 +189,10 @@ def main():
         task_embed_dim,
         num_tasks,
         edge_types,
-        position_dim,
-        num_classes,
+        rank=rank,
+        position_dim=position_dim,
+        num_classes=num_classes,
+        device=device,
         model_type=model_type,
     ).to(device)
 
@@ -220,6 +230,11 @@ def main():
     best_val_loss = float("inf")
     best_test_loss = float("inf")
     best_train_loss = float("inf")
+
+    best_val_f1 = -float("inf")
+    best_test_f1 = -float("inf")
+    best_train_f1 = -float("inf")
+
     best_epoch = 0
 
     for epoch in range(0, args.epochs):
@@ -260,17 +275,22 @@ def main():
             best_test_loss = test_loss
             best_train_loss = train_loss
             best_epoch = epoch
+
+            best_val_f1 = val_f1
+            best_test_f1 = test_f1
+            best_train_f1 = train_f1
+
             # save model
             os.makedirs("best_models", exist_ok=True)
 
             torch.save(
                 model.state_dict(),
-                f"best_models/funcgnn_lr_{lr}_wd_{weight_decay}_hid_size_{hidden_dim}_num_equi_layers_{num_layers}_fdim_{feature_dim}_cs_{weight_loss_by_conf_score}.pt",
+                f"best_models/funcgnn_lr_{lr}_wd_{weight_decay}_hid_size_{hidden_dim}_num_layers_{num_layers}_fdim_{feature_dim}_cs_{weight_loss_by_conf_score}.pt",
             )
 
         print(
-            "*** Best Train Loss: %.5f \t Best Val Loss: %.5f \t Best Test Loss: %.5f \t Best epoch %d"
-            % (best_train_loss, best_val_loss, best_test_loss, best_epoch)
+            "*** Best Train Loss: %.5f \t Best Val Loss: %.5f \t Best Test Loss: %.5f \t Best Train F1: %.5f \t Best Val F1: %.5f \t Best Test F1: %.5f Best epoch %d"
+            % (best_train_loss, best_val_loss, best_test_loss, best_train_f1, best_val_f1, best_test_f1, best_epoch)
         )
 
         if early_stopper.early_stop(val_loss):

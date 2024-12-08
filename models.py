@@ -167,6 +167,7 @@ class EquivariantMPLayer(nn.Module):
         act: nn.Module,
         edge_types: torch.Tensor,
         rank: int,
+        device="cpu",
     ) -> None:
         super().__init__()
         self.act = act
@@ -174,6 +175,7 @@ class EquivariantMPLayer(nn.Module):
         self.edge_types = edge_types
         self.rank = rank
         self.hidden_channels = hidden_channels
+        self.device = device
 
         # Messages will consist of two (source and target) node embeddings and a scalar distance
         self.message_input_size = 2 * in_channels + 1
@@ -185,7 +187,7 @@ class EquivariantMPLayer(nn.Module):
             # A, B matrix for each edge type r
             # Each will have bias because it's an r-dim vector, which is small
             A_r = nn.Linear(self.rank, self.hidden_channels, bias=True)
-            B_r = nn.Linear(self.message_input_size, self.rank, bias=True)
+            B_r = nn.Linear(self.message_input_size, self.rank, bias=False)
             self.weight_dict[f"{edge_type_idx}_A"] = A_r
             self.weight_dict[f"{edge_type_idx}_B"] = B_r
 
@@ -215,7 +217,7 @@ class EquivariantMPLayer(nn.Module):
 
         unique_edge_type_idxs = torch.unique(edge_type_idxs)
 
-        m_agg = torch.zeros((num_edges, self.hidden_channels))
+        m_agg = torch.zeros((num_edges, self.hidden_channels)).to(self.device)
         for edge_type_idx in unique_edge_type_idxs:
             # A_r, B_r = self.weight_dict[int(edge_type_idx.item())]
             A_r = self.weight_dict[f"{int(edge_type_idx.item())}_A"]
@@ -273,8 +275,9 @@ class EquivariantGNN(nn.Module):
         final_embedding_size=None,
         target_size: int = 1,
         num_mp_layers: int = 2,
-        rank=5,
+        rank: int = 16,
         edge_types=None,
+        device='cpu'
     ) -> None:
         super().__init__()
         if final_embedding_size is None:
@@ -292,7 +295,7 @@ class EquivariantGNN(nn.Module):
         self.message_passing_layers = nn.ModuleList()
         channels = [hidden_channels] * (num_mp_layers) + [final_embedding_size]
         for d_in, d_out in zip(channels[:-1], channels[1:]):
-            layer = EquivariantMPLayer(d_in, d_out, self.act, edge_types, rank)
+            layer = EquivariantMPLayer(d_in, d_out, self.act, edge_types, rank, device)
             self.message_passing_layers.append(layer)
 
         # modules required for readout of a graph-level
@@ -384,9 +387,11 @@ class FuncGNN(nn.Module):
         task_embed_dim,
         num_tasks,
         edge_types,
+        rank=16,
         position_dim=3,
         num_classes=3,
         dropout=0.1,
+        device='cpu',
         model_type="egnn_t0",
     ):
         super().__init__()
@@ -414,7 +419,9 @@ class FuncGNN(nn.Module):
                 final_embedding_size=hidden_dim,
                 target_size=hidden_dim,
                 num_mp_layers=num_layers,
+                rank=rank,
                 edge_types=edge_types,
+                device=device
             )
         elif self.model_type == "gat":
             self.spatial_model = GAT(
