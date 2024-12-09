@@ -92,7 +92,7 @@ def create_fake_dataloader(num_proteins=100, num_tasks=1000):
     return protein_datas, DataLoader(protein_datas, batch_size=4)
 
 
-def load_protein(prot_num, filename, edge_types):
+def load_protein(prot_num, filename, edge_types, struct_feat_scaling='log'):
     with h5py.File(filename, "r") as f:
         pos = torch.tensor(f["pos"][:])
         atom_type = torch.tensor(f["atom_type"][:], dtype=torch.long)
@@ -115,6 +115,10 @@ def load_protein(prot_num, filename, edge_types):
             edge_feats[0, edge_mask] = i
         edge_feats = edge_feats[[0, 3]]
 
+
+        if struct_feat_scaling:
+            structure_feats = torch.log(1 + structure_feats)
+
         d = Data(
             edge_index=edge_index,
             atom_types=atom_type,
@@ -128,7 +132,7 @@ def load_protein(prot_num, filename, edge_types):
         return d
 
 
-def get_dataset(dataset_dir):
+def get_dataset(dataset_dir,struct_feat_scaling='log'):
     dataset = []
 
     edge_types = {
@@ -150,7 +154,8 @@ def get_dataset(dataset_dir):
         (15, 15): 15,
     }
     for i, fname in tqdm(enumerate(glob.glob(os.path.join(dataset_dir, "*.hdf5")))):
-        d = load_protein(i, fname, edge_types)
+        print("Loading", fname)
+        d = load_protein(i, fname, edge_types, struct_feat_scaling=struct_feat_scaling)
         dataset.append(d)
 
     print(edge_types)
@@ -158,8 +163,8 @@ def get_dataset(dataset_dir):
     return dataset, edge_types
 
 
-def get_dataloader(dataset_dir, batch_size=16):
-    dataset, edge_types = get_dataset(dataset_dir)
+def get_dataloader(dataset_dir, batch_size=16, struct_feat_scaling='log'):
+    dataset, edge_types = get_dataset(dataset_dir, struct_feat_scaling)
     return dataset, DataLoader(dataset, batch_size), edge_types
 
 

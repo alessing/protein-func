@@ -113,6 +113,13 @@ parser.add_argument(
     help="Model type, either EGNN or GAT (default: egnn)",
 )
 
+parser.add_argument(
+    "--struct_feat_scaling",
+    type=str,
+    default="log",
+)
+
+
 parser.add_argument("--weight_decay", type=float, default=1e-6, help="weight decay")
 
 parser.add_argument("--lr", type=float, default=1e-4, help="learning rate")
@@ -185,8 +192,9 @@ def main():
     dropout = args.dropout
     batch_norm = args.batch_norm
 
-    protein_data, dl, edge_types = get_dataloader(DATASET_DIR, batch_size=batch_size)
-    # protein_data, dl = create_fake_dataloader(num_proteins=1000, num_tasks=4598)
+
+    protein_data, dl, edge_types = get_dataloader(DATASET_DIR, batch_size=batch_size, struct_feat_scaling=args.struct_feat_scaling)
+    #protein_data, dl = create_fake_dataloader(num_proteins=1000, num_tasks=4598)
 
     model = FuncGNN(
         num_layers,
@@ -387,18 +395,15 @@ def train(model, optimizer, epoch, loader, device, weight_loss_by_conf_score=Fal
             if weight_loss_by_conf_score:
                 protein_loss *= data.conf_score[b]
 
-            num_protein_tasks = y_pred.size(0)
-            loss = protein_loss / num_protein_tasks
+                num_protein_tasks = y_pred.size(0)
+                loss += protein_loss / num_protein_tasks
 
-
-        if valid_loss:
+            loss = loss/batch_size
             optimizer.zero_grad()
-
             loss.backward()
             torch.nn.utils.clip_grad_norm_(model.parameters(), 0.5)
             optimizer.step()
             res["loss"] += loss.item()
-            res["counter"] += batch_size
 
     F1 = TP / (TP + 0.5 * (FP + FN))
     acc = (TP + TN) / (TP + TN + FP + FN)
@@ -406,10 +411,10 @@ def train(model, optimizer, epoch, loader, device, weight_loss_by_conf_score=Fal
     recall = TP / (TP + FN)
     print(
         "%s epoch %d avg loss: %.5f, f1 score: %.5f, acc: %.5f, precision: %.5f, recall: %.5f"
-        % ("train", epoch, res["loss"] / res["counter"], F1, acc, precision, recall)
+        % ("train", epoch, res["loss"], F1, acc, precision, recall)
     )
 
-    return res["loss"] / res["counter"], F1, acc, precision, recall
+    return res["loss"], F1, acc, precision, recall
 
 
 def val(model, epoch, loader, partition, device, weight_loss_by_conf_score=False):
@@ -472,9 +477,8 @@ def val(model, epoch, loader, partition, device, weight_loss_by_conf_score=False
                 num_protein_tasks = y_pred.size(0)
                 loss += protein_loss / num_protein_tasks
 
-
+            loss = loss/batch_size
             res["loss"] += loss.item()
-            res["counter"] += batch_size
 
     F1 = TP / (TP + 0.5 * (FP + FN))
     acc = (TP + TN) / (TP + TN + FP + FN)
@@ -482,10 +486,10 @@ def val(model, epoch, loader, partition, device, weight_loss_by_conf_score=False
     recall = TP / (TP + FN)
     print(
         "%s epoch %d avg loss: %.5f, f1 score: %.5f, acc: %.5f, precision: %.5f, recall: %.5f"
-        % (partition, epoch, res["loss"] / res["counter"], F1, acc, precision, recall)
+        % (partition, epoch, res["loss"], F1, acc, precision, recall)
     )
 
-    return res["loss"] / res["counter"], F1, acc, precision, recall
+    return res["loss"], F1, acc, precision, recall
 
 
 if __name__ == "__main__":
