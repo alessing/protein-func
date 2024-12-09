@@ -103,10 +103,15 @@ def load_protein(prot_num, filename, edge_types):
         edge_feats = torch.tensor(f["edge_feats"]).float()
         conf_score = torch.tensor(f["confidence_score"][0]).float()
 
+        if True: #use log norm
+            structure_feats = torch.log(structure_feats + 1)
+
         assert labels.shape == task_index.shape
         prot_num = torch.full_like(task_index, prot_num)
         task_index = torch.stack((prot_num, task_index), dim=1)
         labels = torch.stack((prot_num, labels), dim=1)
+
+        print(task_index.shape)
 
         edge_feats = torch.vstack((torch.zeros((1, edge_feats.shape[1])), edge_feats))
         for i, edge_type in enumerate(edge_types.keys()):

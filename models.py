@@ -6,6 +6,7 @@ from torch import nn
 from torch_geometric.nn import global_add_pool, global_mean_pool, GAT
 from torch_scatter import scatter
 from torch_geometric.nn.aggr import SumAggregation
+import math
 
 
 class E_GCL_mask(E_GCL):
@@ -188,6 +189,10 @@ class EquivariantMPLayer(nn.Module):
             # Each will have bias because it's an r-dim vector, which is small
             A_r = nn.Linear(self.rank, self.hidden_channels, bias=True)
             B_r = nn.Linear(self.message_input_size, self.rank, bias=False)
+
+            nn.init.kaiming_uniform_(A_r.weight, a=math.sqrt(5))
+            B_r.weight.data.fill_(0.0)
+
             self.weight_dict[f"{edge_type_idx}_A"] = A_r
             self.weight_dict[f"{edge_type_idx}_B"] = B_r
 
@@ -204,7 +209,7 @@ class EquivariantMPLayer(nn.Module):
             act,
         )
 
-    @torch.autocast(device_type="cuda" if torch.cuda.is_available() else "cpu")
+    #@torch.autocast(device_type="cuda" if torch.cuda.is_available() else "cpu")
     def node_message_function(
         self,
         source_node_embed,  # h_i
@@ -248,7 +253,7 @@ class EquivariantMPLayer(nn.Module):
 
         return m_agg
 
-    @torch.autocast(device_type="cuda" if torch.cuda.is_available() else "cpu")
+    #@torch.autocast(device_type="cuda" if torch.cuda.is_available() else "cpu")
     def forward(self, node_embed, node_pos, edge_index, edge_attr):
         row, col = edge_index
 
@@ -324,7 +329,7 @@ class EquivariantGNN(nn.Module):
         aggr = self.aggregation(node_embed, batch_index)
         return self.f_predict(aggr)
 
-    @torch.autocast(device_type="cuda" if torch.cuda.is_available() else "cpu")
+    #@torch.autocast(device_type="cuda" if torch.cuda.is_available() else "cpu")
     def forward(self, x, h, edge_index, edge_attr, batch):
         node_embed = self.encode(x, h, edge_index, edge_attr)
         # pred = self._predict(node_embed, batch)
@@ -369,7 +374,7 @@ class E3Pooling(nn.Module):
 
         self.pool = global_mean_pool
 
-    @torch.autocast(device_type="cuda" if torch.cuda.is_available() else "cpu")
+    #@torch.autocast(device_type="cuda" if torch.cuda.is_available() else "cpu")
     def forward(self, h, batch, edge_index=None, x=None, edge_attr=None):
         if self.model_type == "egnn_old":
             h = self.e3_backbone(h, edge_index, x, edge_attr=edge_attr)
@@ -458,7 +463,7 @@ class FuncGNN(nn.Module):
         # task embedding
         self.tasks_embed = nn.Embedding(num_tasks, task_embed_dim)
 
-    @torch.autocast(device_type="cuda" if torch.cuda.is_available() else "cpu")
+    #@torch.autocast(device_type="cuda" if torch.cuda.is_available() else "cpu")
     def forward(self, h, x, edge_index, edge_attr, batch, tasks_indices, batch_size):
         # Apply E(3)-equivariant layers
         if self.model_type == "egnn_old":
