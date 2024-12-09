@@ -129,7 +129,7 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 loss_mse = nn.MSELoss()
 
 # DATASET_DIR = "data/processed_data/protein_inputs"
-DATASET_DIR = "data/hdf5_files_d_10_2"
+DATASET_DIR = "data/processed_data/hdf5_files_d_10_2"
 
 
 def create_summary_writer(
@@ -383,14 +383,14 @@ def train(model, optimizer, epoch, loader, device, weight_loss_by_conf_score=Fal
             # else:
             # loss += torch.tensor(0., device=device)
 
-            if True: #HACK
-                optimizer.zero_grad()
+        if True: #HACK
+            optimizer.zero_grad()
 
-                loss.backward()
-                torch.nn.utils.clip_grad_norm_(model.parameters(), 0.5)
-                optimizer.step()
-                res["loss"] += loss.item()
-                res["counter"] += batch_size
+            loss.backward()
+            torch.nn.utils.clip_grad_norm_(model.parameters(), 0.5)
+            optimizer.step()
+            res["loss"] += loss.item()
+            res["counter"] += batch_size
 
     F1 = TP / (TP + 0.5 * (FP + FN))
     acc = (TP + TN) / (TP + TN + FP + FN)
