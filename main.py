@@ -10,7 +10,7 @@ from torch.utils.tensorboard import SummaryWriter
 import datetime
 import os
 
-from models import FuncGNN
+from models.funcgnn import FuncGNN
 
 torch.manual_seed(42)
 
@@ -109,7 +109,7 @@ parser.add_argument(
 parser.add_argument(
     "--model_type",
     type=str,
-    default="egnn_t0",
+    default="rgat",
     help="Model type, either EGNN or GAT (default: egnn)",
 )
 
@@ -128,7 +128,6 @@ parser.add_argument("--dropout", type=float, default=0.5, help="Dropout")
 parser.add_argument("--batch_norm", type=str_to_bool, default=True, help="Batch norm")
 
 
-
 parser.add_argument(
     "--tensorboard", type=str_to_bool, default=True, help="Uses tensorboard"
 )
@@ -141,7 +140,7 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 loss_mse = nn.MSELoss()
 
 # DATASET_DIR = "data/processed_data/protein_inputs"
-DATASET_DIR = "data/processed_data/hdf5_files_d_10_2"
+DATASET_DIR = "data/processed_data/hdf5_files_d_10"
 
 
 def create_summary_writer(
@@ -192,9 +191,10 @@ def main():
     dropout = args.dropout
     batch_norm = args.batch_norm
 
-
-    protein_data, dl, edge_types = get_dataloader(DATASET_DIR, batch_size=batch_size, struct_feat_scaling=args.struct_feat_scaling)
-    #protein_data, dl = create_fake_dataloader(num_proteins=1000, num_tasks=4598)
+    protein_data, dl, edge_types = get_dataloader(
+        DATASET_DIR, batch_size=batch_size, struct_feat_scaling=args.struct_feat_scaling
+    )
+    # protein_data, dl = create_fake_dataloader(num_proteins=1000, num_tasks=4598)
 
     model = FuncGNN(
         num_layers,
@@ -254,11 +254,14 @@ def main():
 
     best_epoch = 0
 
-    scaler = torch.amp.GradScaler("cuda" if torch.cuda.is_available() else "cpu")
-
     for epoch in range(0, args.epochs):
         train_loss, train_f1, train_acc, train_precision, train_recall = train(
-            model, optimizer, epoch, train_loader, scaler, device, weight_loss_by_conf_score
+            model,
+            optimizer,
+            epoch,
+            train_loader,
+            device,
+            weight_loss_by_conf_score,
         )
         if args.tensorboard:
             writer.add_scalar("Train/Loss", train_loss, epoch)
@@ -341,11 +344,11 @@ def add_negative_samples(task_indices, labels, num_tasks=4598):
     return task_indices, labels
 
 
-def train(model, optimizer, epoch, loader, scaler, device, weight_loss_by_conf_score=False):
+def train(model, optimizer, epoch, loader, device, weight_loss_by_conf_score=False):
     model.train()
 
     ce_loss = torch.nn.CrossEntropyLoss()
-    res = {"epoch": epoch, "loss": 0, "counter": 0}
+    res = {"epoch": epoch, "loss": 0}
 
     TP = 0
     TN = 0
@@ -397,17 +400,16 @@ def train(model, optimizer, epoch, loader, scaler, device, weight_loss_by_conf_s
             if weight_loss_by_conf_score:
                 protein_loss *= data.conf_score[b]
 
-                num_protein_tasks = y_pred.size(0)
-                loss += protein_loss / num_protein_tasks
+            num_protein_tasks = y_pred.size(0)
+            loss += protein_loss / num_protein_tasks
 
-            loss = loss/batch_size
-            optimizer.zero_grad()
-            scaler.scale(loss).backward()  #3 call backward pass on scaled loss
-            torch.nn.utils.clip_grad_norm_(model.parameters(), 0.5)
-            scaler.step(optimizer)  #4 unscale gradients, do weight update if not Infs or NaNs
-            scaler.update()  #5 update scale factor for next iteration
-            # optimizer.step()
-            res["loss"] += loss.item()
+        optimizer.zero_grad()
+
+        loss = loss / batch_size
+        loss.backward()
+        torch.nn.utils.clip_grad_norm_(model.parameters(), 0.5)
+        optimizer.step()
+        res["loss"] += loss.item()
 
     F1 = TP / (TP + 0.5 * (FP + FN))
     acc = (TP + TN) / (TP + TN + FP + FN)
@@ -425,7 +427,7 @@ def val(model, epoch, loader, partition, device, weight_loss_by_conf_score=False
     model.eval()
 
     ce_loss = torch.nn.CrossEntropyLoss()
-    res = {"epoch": epoch, "loss": 0, "counter": 0}
+    res = {"epoch": epoch, "loss": 0}
 
     TP = 0
     TN = 0
@@ -481,7 +483,7 @@ def val(model, epoch, loader, partition, device, weight_loss_by_conf_score=False
                 num_protein_tasks = y_pred.size(0)
                 loss += protein_loss / num_protein_tasks
 
-            loss = loss/batch_size
+            loss = loss / batch_size
             res["loss"] += loss.item()
 
     F1 = TP / (TP + 0.5 * (FP + FN))

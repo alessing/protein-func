@@ -11,6 +11,7 @@ import pandas as pd
 
 np.random.seed(42)
 
+#TODO: Matt put relation type stuff back into dataloader
 
 def generate_random_graph(num_nodes, edge_prob):
     """

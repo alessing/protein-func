@@ -4,6 +4,7 @@ from model.gcl import E_GCL, unsorted_segment_sum
 import torch
 from torch import nn
 from torch_geometric.nn import global_add_pool, global_mean_pool, GAT
+from models.rgat import RGAT
 from torch_scatter import scatter
 from torch_geometric.nn.aggr import SumAggregation, MeanAggregation
 import math
@@ -217,8 +218,7 @@ class EquivariantMPLayer(nn.Module):
             self.batch_norm = nn.BatchNorm1d(self.hidden_channels)
         self.activation = nn.ReLU()
 
-
-    @torch.autocast(device_type="cuda" if torch.cuda.is_available() else "cpu")
+    # @torch.autocast(device_type="cuda" if torch.cuda.is_available() else "cpu")
     def node_message_function(
         self,
         source_node_embed,  # h_i
@@ -266,7 +266,7 @@ class EquivariantMPLayer(nn.Module):
 
         return m_agg
 
-    @torch.autocast(device_type="cuda" if torch.cuda.is_available() else "cpu")
+    # @torch.autocast(device_type="cuda" if torch.cuda.is_available() else "cpu")
     def forward(self, node_embed, node_pos, edge_index, edge_attr):
         row, col = edge_index
 
@@ -278,11 +278,11 @@ class EquivariantMPLayer(nn.Module):
         # message sum aggregation in equation (4)
         aggr_node_messages = scatter(node_messages, col, dim=0, reduce="mean")
 
-        # batchnorm 
+        # batchnorm
         if self.use_batch_norm:
             aggr_node_messages = self.batch_norm(aggr_node_messages)
 
-        # dropout 
+        # dropout
         new_node_embed = self.dropout(aggr_node_messages)
 
         # activation
@@ -327,7 +327,9 @@ class EquivariantGNN(nn.Module):
         self.message_passing_layers = nn.ModuleList()
         channels = [hidden_channels] * (num_mp_layers) + [final_embedding_size]
         for d_in, d_out in zip(channels[:-1], channels[1:]):
-            layer = EquivariantMPLayer(d_in, d_out, self.act, dropout, batch_norm, edge_types, rank, device)
+            layer = EquivariantMPLayer(
+                d_in, d_out, self.act, dropout, batch_norm, edge_types, rank, device
+            )
             self.message_passing_layers.append(layer)
 
         # modules required for readout of a graph-level
@@ -355,7 +357,7 @@ class EquivariantGNN(nn.Module):
         aggr = self.aggregation(node_embed, batch_index)
         return self.f_predict(aggr)
 
-    @torch.autocast(device_type="cuda" if torch.cuda.is_available() else "cpu")
+    # @torch.autocast(device_type="cuda" if torch.cuda.is_available() else "cpu")
     def forward(self, x, h, edge_index, edge_attr, batch):
         node_embed = self.encode(x, h, edge_index, edge_attr)
         # pred = self._predict(node_embed, batch)
@@ -400,7 +402,7 @@ class E3Pooling(nn.Module):
 
         self.pool = global_mean_pool
 
-    @torch.autocast(device_type="cuda" if torch.cuda.is_available() else "cpu")
+    # @torch.autocast(device_type="cuda" if torch.cuda.is_available() else "cpu")
     def forward(self, h, batch, edge_index=None, x=None, edge_attr=None):
         if self.model_type == "egnn_old":
             h = self.e3_backbone(h, edge_index, x, edge_attr=edge_attr)
@@ -469,6 +471,19 @@ class FuncGNN(nn.Module):
                 out_channels=hidden_dim,
                 dropout=dropout,
             )
+        elif self.model_type == "rgat":
+            # TODO: SHOULD WE STACK (H, X) as init node feature
+            self.spatial_model = RGAT(
+                in_channels=feature_dim,
+                out_channels=hidden_dim,
+                hidden_channels=hidden_dim,
+                num_heads=4,
+                num_relations=16,
+                num_layers=num_layers,
+                edge_dim=1,
+                num_blocks=None,
+                dropout=dropout,
+            )
         else:
             raise Exception("Not implemented!")
 
@@ -492,7 +507,7 @@ class FuncGNN(nn.Module):
         # task embedding
         self.tasks_embed = nn.Embedding(num_tasks, task_embed_dim)
 
-    @torch.autocast(device_type="cuda" if torch.cuda.is_available() else "cpu")
+    # @torch.autocast(device_type="cuda" if torch.cuda.is_available() else "cpu")
     def forward(self, h, x, edge_index, edge_attr, batch, tasks_indices, batch_size):
         # Apply E(3)-equivariant layers
         if self.model_type == "egnn_old":
@@ -507,6 +522,13 @@ class FuncGNN(nn.Module):
             h = self.spatial_model(
                 x=input, edge_index=edge_index, batch=batch, batch_size=batch_size
             )
+        elif self.model_type == "rgat":
+            print(f"h: {h.shape}")
+            breakpoint()
+            edge_type = None
+
+            h = self.spatial_model(h, edge_index, edge_type, edge_attr)
+
         else:
             raise Exception("Not implemented!")
 
