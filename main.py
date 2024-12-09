@@ -314,23 +314,17 @@ def train(model, optimizer, epoch, loader):
             protein_loss = ce_loss(y_pred, y)
 
             num_protein_tasks = y_pred.size(0)
-            new_loss =  protein_loss #/ num_protein_tasks
-            #print(new_loss)
-            #HACK ensure loss is real num
-            if not (torch.isnan(new_loss).any() or torch.isinf(new_loss).any()):
-                valid_loss = True
-                loss += new_loss
-            #else:
-                #loss += torch.tensor(0., device=device)
+            loss +=  protein_loss / num_protein_tasks
 
-        if valid_loss:
-            optimizer.zero_grad()
+        optimizer.zero_grad()
 
-            loss.backward()
-            torch.nn.utils.clip_grad_norm_(model.parameters(), 0.5)
-            optimizer.step()
-            res["loss"] += loss.item()
-            res["counter"] += batch_size
+        loss = loss/batch_size
+        print(loss.item())
+        loss.backward()
+        torch.nn.utils.clip_grad_norm_(model.parameters(), 0.5)
+        optimizer.step()
+        res["loss"] += loss.item()
+        res["counter"] += batch_size
 
     F1 = TP / (TP + 0.5 * (FP + FN))
     acc = (TP + TN) / (TP + TN + FP + FN)
