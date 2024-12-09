@@ -29,6 +29,7 @@ PERIODIC_TABLE_IDX = {
 DEVICE = 'cuda' if torch.cuda.is_available() else 'cpu'
 
 def adjacency_features(adj_matrix, D):
+<<<<<<< HEAD
     adj_matrix = adj_matrix.to(device=DEVICE, dtype=torch.float32)
 
     structure_features = torch.ones((adj_matrix.shape[0], D), device=DEVICE)
@@ -41,6 +42,28 @@ def adjacency_features(adj_matrix, D):
 
     adj_matrix = adj_matrix.to("cpu")
 
+=======
+    try:
+        adj_matrix = adj_matrix.to(device=DEVICE, dtype=torch.float32)
+        structure_features = torch.ones((adj_matrix.shape[0], D), device=DEVICE)
+        Apow = adj_matrix
+        for d in range(1, D):
+            structure_features[:, d] = torch.diag(Apow.to_dense())
+            if d < D-1:
+                Apow = adj_matrix @ Apow
+            torch.cuda.empty_cache()
+    except:
+        adj_matrix = adj_matrix.to(device="cpu", dtype=torch.float32)
+        structure_features = torch.ones((adj_matrix.shape[0], D), device="cpu")
+        Apow = adj_matrix
+        for d in range(1, D):
+            structure_features[:, d] = torch.diag(Apow.to_dense())
+            if d < D-1:
+                Apow = adj_matrix @ Apow
+
+    adj_matrix = adj_matrix.to("cpu")
+
+>>>>>>> 95a3d1efb9badc8802cbe969e38cdf16962d3f58
     return structure_features
 
 def save_hdf5(filename, protein_funcs, parser, D):
