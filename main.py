@@ -114,6 +114,12 @@ parser.add_argument(
     "--tensorboard", type=str_to_bool, default=False, help="Uses tensorboard"
 )
 
+parser.add_argument(
+    "--debug_mode",
+    action='store_true',
+    help="Makes all edges have the same relation type."
+)
+
 args = parser.parse_args()
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -165,6 +171,7 @@ def main():
     num_classes = args.num_classes
     position_dim = args.position_dim
     model_type = args.model_type
+    debug_mode = args.debug_mode
 
     model = FuncGNN(
         num_layers,
@@ -178,7 +185,7 @@ def main():
         model_type=model_type,
     ).to(device)
 
-    protein_data, dl, edge_types = get_dataloader(DATASET_DIR, batch_size=batch_size, struct_feat_scaling=False)
+    protein_data, dl, edge_types = get_dataloader(DATASET_DIR, batch_size=batch_size, struct_feat_scaling=False, debug_mode=debug_mode)
     # protein_data, dl = create_fake_dataloader(num_proteins=1000, num_tasks=4598)
 
     train_data, temp_data = train_test_split(

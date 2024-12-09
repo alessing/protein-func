@@ -91,7 +91,7 @@ def create_fake_dataloader(num_proteins=100, num_tasks=1000):
     return protein_datas, DataLoader(protein_datas, batch_size=4)
 
 
-def load_protein(prot_num, filename, edge_types, struct_feat_scaling='log'):
+def load_protein(prot_num, filename, edge_types, struct_feat_scaling='log', debug_mode=False):
     with h5py.File(filename, "r") as f:
         pos = torch.tensor(f["pos"][:])
         atom_type = torch.tensor(f["atom_type"][:], dtype=torch.long)
@@ -108,10 +108,13 @@ def load_protein(prot_num, filename, edge_types, struct_feat_scaling='log'):
         labels = torch.stack((prot_num, labels), dim=1)
 
         edge_feats = torch.vstack((torch.zeros((1, edge_feats.shape[1])), edge_feats))
-        for i, edge_type in enumerate(edge_types.keys()):
-            edge_type = torch.Tensor(edge_type)
-            edge_mask = (edge_feats[1:3].T == edge_type).all(dim=1)
-            edge_feats[0, edge_mask] = i
+        if debug_mode:
+            edge_feats[0, :] = 0  # If debug, all edges have the same relation type
+        else:
+            for i, edge_type in enumerate(edge_types.keys()):
+                edge_type = torch.Tensor(edge_type)
+                edge_mask = (edge_feats[1:3].T == edge_type).all(dim=1)
+                edge_feats[0, edge_mask] = i
         edge_feats = edge_feats[[0, 3]]
 
 
@@ -132,7 +135,7 @@ def load_protein(prot_num, filename, edge_types, struct_feat_scaling='log'):
         return d
 
 
-def get_dataset(dataset_dir,struct_feat_scaling='log'):
+def get_dataset(dataset_dir,struct_feat_scaling='log', debug_mode=False):
     dataset = []
 
     edge_types = {
@@ -155,7 +158,7 @@ def get_dataset(dataset_dir,struct_feat_scaling='log'):
     }
     for i, fname in tqdm(enumerate(glob.glob(os.path.join(dataset_dir, "*.hdf5")))):
         print("Loading", fname)
-        d = load_protein(i, fname, edge_types, struct_feat_scaling=struct_feat_scaling)
+        d = load_protein(i, fname, edge_types, struct_feat_scaling=struct_feat_scaling, debug_mode=debug_mode)
         dataset.append(d)
 
     print(edge_types)
@@ -163,8 +166,8 @@ def get_dataset(dataset_dir,struct_feat_scaling='log'):
     return dataset, edge_types
 
 
-def get_dataloader(dataset_dir, batch_size=16, struct_feat_scaling='log'):
-    dataset, edge_types = get_dataset(dataset_dir, struct_feat_scaling)
+def get_dataloader(dataset_dir, batch_size=16, struct_feat_scaling='log', debug_mode=False):
+    dataset, edge_types = get_dataset(dataset_dir, struct_feat_scaling, debug_mode=debug_mode)
     return dataset, DataLoader(dataset, batch_size), edge_types
 
 
