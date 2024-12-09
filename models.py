@@ -6,6 +6,7 @@ from torch import nn
 from torch_geometric.nn import global_add_pool, global_mean_pool, GAT
 from torch_scatter import scatter
 from torch_geometric.nn.aggr import SumAggregation, MeanAggregation
+import math
 
 
 class E_GCL_mask(E_GCL):
@@ -191,6 +192,10 @@ class EquivariantMPLayer(nn.Module):
             # Each will have bias because it's an r-dim vector, which is small
             A_r = nn.Linear(self.rank, self.hidden_channels, bias=True)
             B_r = nn.Linear(self.message_input_size, self.rank, bias=False)
+
+            nn.init.kaiming_uniform_(A_r.weight, a=math.sqrt(5))
+            B_r.weight.data.fill_(0.0)
+
             self.weight_dict[f"{edge_type_idx}_A"] = A_r
             self.weight_dict[f"{edge_type_idx}_B"] = B_r
 
