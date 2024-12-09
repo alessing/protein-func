@@ -523,12 +523,11 @@ class FuncGNN(nn.Module):
                 x=input, edge_index=edge_index, batch=batch, batch_size=batch_size
             )
         elif self.model_type == "rgat":
-            print(f"h: {h.shape}")
-            breakpoint()
-            edge_type = None
-
-            h = self.spatial_model(h, edge_index, edge_type, edge_attr)
-
+            # one-dimensional relation type/index for each edge in edge_index
+            edge_type = edge_attr[:, 0].int()
+            # corresponding edge features
+            edge_feat = edge_attr[:, 1]
+            h = self.spatial_model(h, edge_index, edge_type, edge_feat)
         else:
             raise Exception("Not implemented!")
 
