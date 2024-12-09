@@ -14,7 +14,7 @@ dependencies:
   - pandas
   - pytorch
   - torch-scatter
-  - pytorch-cuda=12.4
+  - pytorch-cuda
   - pyg
   - pip
   - pip:

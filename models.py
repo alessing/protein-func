@@ -5,7 +5,7 @@ import torch
 from torch import nn
 from torch_geometric.nn import global_add_pool, global_mean_pool, GAT
 from torch_scatter import scatter
-from torch_geometric.nn.aggr import SumAggregation
+from torch_geometric.nn.aggr import SumAggregation, MeanAggregation
 
 
 class E_GCL_mask(E_GCL):
@@ -165,6 +165,8 @@ class EquivariantMPLayer(nn.Module):
         in_channels: int,
         hidden_channels: int,
         act: nn.Module,
+        batch_norm: bool,
+        dropout: float,
         edge_types: torch.Tensor,
         rank: int,
         device="cpu",
@@ -176,6 +178,7 @@ class EquivariantMPLayer(nn.Module):
         self.rank = rank
         self.hidden_channels = hidden_channels
         self.device = device
+        self.use_batch_norm = batch_norm
 
         # Messages will consist of two (source and target) node embeddings and a scalar distance
         self.message_input_size = 2 * in_channels + 1
@@ -204,6 +207,12 @@ class EquivariantMPLayer(nn.Module):
             act,
         )
 
+        self.dropout = nn.Dropout(p=dropout)
+        if self.use_batch_norm:
+            self.batch_norm = nn.BatchNorm1d(self.hidden_channels)
+        self.activation = nn.ReLU()
+
+
     @torch.autocast(device_type="cuda" if torch.cuda.is_available() else "cpu")
     def node_message_function(
         self,
@@ -218,7 +227,11 @@ class EquivariantMPLayer(nn.Module):
 
         unique_edge_type_idxs = torch.unique(edge_type_idxs)
 
-        m_agg = torch.zeros((num_edges, self.hidden_channels), device=self.device, dtype=source_node_embed.dtype)
+        m_agg = torch.zeros(
+            (num_edges, self.hidden_channels),
+            device=self.device,
+            dtype=source_node_embed.dtype,
+        )
         for edge_type_idx in unique_edge_type_idxs:
             # A_r, B_r = self.weight_dict[int(edge_type_idx.item())]
             A_r = self.weight_dict[f"{int(edge_type_idx.item())}_A"]
@@ -258,7 +271,17 @@ class EquivariantMPLayer(nn.Module):
         )
 
         # message sum aggregation in equation (4)
-        aggr_node_messages = scatter(node_messages, col, dim=0, reduce="sum")
+        aggr_node_messages = scatter(node_messages, col, dim=0, reduce="mean")
+
+        # batchnorm 
+        if self.use_batch_norm:
+            new_node_embed = self.batch_norm(new_node_embed)
+
+        # dropout 
+        new_node_embed = self.dropout(new_node_embed)
+
+        # activation
+        new_node_embed = self.activation(new_node_embed)
 
         # compute new node embeddings "h_i^{l+1}"
         # (implements rest of equation (4))
@@ -278,8 +301,10 @@ class EquivariantGNN(nn.Module):
         target_size: int = 1,
         num_mp_layers: int = 2,
         rank: int = 16,
+        dropout: float = 0.5,
+        batch_norm: bool = True,
         edge_types=None,
-        device='cpu'
+        device="cpu",
     ) -> None:
         super().__init__()
         if final_embedding_size is None:
@@ -297,12 +322,12 @@ class EquivariantGNN(nn.Module):
         self.message_passing_layers = nn.ModuleList()
         channels = [hidden_channels] * (num_mp_layers) + [final_embedding_size]
         for d_in, d_out in zip(channels[:-1], channels[1:]):
-            layer = EquivariantMPLayer(d_in, d_out, self.act, edge_types, rank, device)
+            layer = EquivariantMPLayer(d_in, d_out, self.act, dropout, batch_norm, edge_types, rank, device)
             self.message_passing_layers.append(layer)
 
         # modules required for readout of a graph-level
         # representation and graph-level property prediction
-        self.aggregation = SumAggregation()
+        self.aggregation = MeanAggregation()  # SumAggregation()
         self.f_predict = nn.Sequential(
             nn.Linear(final_embedding_size, final_embedding_size),
             self.act,
@@ -318,6 +343,7 @@ class EquivariantGNN(nn.Module):
             # NOTE here we use the complete edge index defined by the transform earlier on
             # to implement the sum over $j \neq i$ in equation (4)
             node_embed = mp_layer(node_embed, x, edge_index, edge_attr)
+
         return node_embed
 
     def _predict(self, node_embed, batch_index):
@@ -394,8 +420,9 @@ class FuncGNN(nn.Module):
         rank=16,
         position_dim=3,
         num_classes=3,
-        dropout=0.1,
-        device='cpu',
+        dropout=0.4,
+        batch_norm=True,
+        device="cpu",
         model_type="egnn_t0",
     ):
         super().__init__()
@@ -424,8 +451,10 @@ class FuncGNN(nn.Module):
                 target_size=hidden_dim,
                 num_mp_layers=num_layers,
                 rank=rank,
+                dropout=dropout,
+                batch_norm=batch_norm,
                 edge_types=edge_types,
-                device=device
+                device=device,
             )
         elif self.model_type == "gat":
             self.spatial_model = GAT(
