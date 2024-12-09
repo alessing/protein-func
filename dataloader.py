@@ -154,6 +154,7 @@ def get_dataset(dataset_dir,struct_feat_scaling='log'):
         (15, 15): 15,
     }
     for i, fname in tqdm(enumerate(glob.glob(os.path.join(dataset_dir, "*.hdf5")))):
+        print("Loading", fname)
         d = load_protein(i, fname, edge_types, struct_feat_scaling=struct_feat_scaling)
         dataset.append(d)
 
