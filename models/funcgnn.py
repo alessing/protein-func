@@ -428,6 +428,9 @@ class FuncGNN(nn.Module):
         position_dim=3,
         num_classes=3,
         dropout=0.4,
+        num_heads=4,
+        num_blocks=None,
+        concat=False,
         batch_norm=True,
         device="cpu",
         model_type="egnn_t0",
@@ -438,6 +441,7 @@ class FuncGNN(nn.Module):
         self.C = num_classes
         self.model_type = model_type
         self.edge_types = edge_types
+        num_relations = len(edge_types.values())
 
         if self.model_type == "egnn_old":
             spatial_layers = [
@@ -477,11 +481,12 @@ class FuncGNN(nn.Module):
                 in_channels=feature_dim,
                 out_channels=hidden_dim,
                 hidden_channels=hidden_dim,
-                num_heads=4,
-                num_relations=16,
+                num_heads=num_heads,
+                num_relations=num_relations,
                 num_layers=num_layers,
                 edge_dim=1,
-                num_blocks=None,
+                num_blocks=num_blocks,
+                concat=concat,
                 dropout=dropout,
             )
         else:

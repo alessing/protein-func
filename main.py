@@ -53,8 +53,29 @@ parser.add_argument(
 parser.add_argument(
     "--num_layers",
     type=int,
-    default=16,
+    default=4,
     help="number of layers in spatial model",
+)
+
+parser.add_argument(
+    "--num_heads",
+    type=int,
+    default=1,
+    help="number of heads",
+)
+
+parser.add_argument(
+    "--num_blocks",
+    type=int,
+    default=None,
+    help="Number of blocks",
+)
+
+parser.add_argument(
+    "--concat",
+    type=str_to_bool,
+    default=True,
+    help="Uses concatenation of head outputs in attention with GAT",
 )
 
 parser.add_argument(
@@ -190,6 +211,9 @@ def main():
     weight_loss_by_conf_score = args.weight_loss_by_conf_score
     dropout = args.dropout
     batch_norm = args.batch_norm
+    num_heads = args.num_heads
+    num_blocks = args.num_blocks
+    concat = args.concat
 
     protein_data, dl, edge_types = get_dataloader(
         DATASET_DIR, batch_size=batch_size, struct_feat_scaling=args.struct_feat_scaling
@@ -208,6 +232,9 @@ def main():
         position_dim=position_dim,
         num_classes=num_classes,
         dropout=dropout,
+        num_heads=num_heads,
+        num_blocks=num_blocks,
+        concat=concat,
         batch_norm=batch_norm,
         device=device,
         model_type=model_type,

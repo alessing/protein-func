@@ -16,6 +16,7 @@ class RGAT(torch.nn.Module):
         num_layers,
         edge_dim,
         num_blocks=None,
+        concat=False,
         dropout=0.6,
     ):
         super(RGAT, self).__init__()
@@ -36,39 +37,49 @@ class RGAT(torch.nn.Module):
                 num_blocks=num_blocks,
                 heads=num_heads,
                 attention_mechanism="within-relation",
+                attention_mode="additive-self-attention",
+                concat=concat,
                 edge_dim=edge_dim,  # Include edge features
                 dropout=dropout,
             )
         )
-        self.bns.append(torch.nn.BatchNorm1d(hidden_channels * num_heads))
+
+        if concat:
+            hidden_dim = hidden_channels * num_heads
+        else:
+            hidden_dim = hidden_channels
+
+        self.bns.append(torch.nn.BatchNorm1d(hidden_dim))
 
         # Hidden layers
         for _ in range(num_layers - 2):
             self.convs.append(
                 RGATConv(
-                    in_channels=hidden_channels * num_heads,
+                    in_channels=hidden_dim,
                     out_channels=hidden_channels,
                     num_relations=num_relations,
                     num_blocks=num_blocks,
                     heads=num_heads,
                     attention_mechanism="within-relation",
                     attention_mode="additive-self-attention",
+                    concat=concat,
                     edge_dim=edge_dim,  # Include edge features
                     dropout=dropout,
                 )
             )
-            self.bns.append(torch.nn.BatchNorm1d(hidden_channels * num_heads))
+            self.bns.append(torch.nn.BatchNorm1d(hidden_dim))
 
         # Output layer
         self.convs.append(
             RGATConv(
-                in_channels=hidden_channels * num_heads,
+                in_channels=hidden_dim,
                 out_channels=out_channels,
                 num_relations=num_relations,
                 num_blocks=num_blocks,
                 heads=1,  # Single head for the final layer
                 attention_mechanism="within-relation",
                 attention_mode="additive-self-attention",
+                concat=concat,
                 edge_dim=edge_dim,  # Include edge features
                 dropout=dropout,
             )
