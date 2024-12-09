@@ -478,13 +478,13 @@ class FuncGNN(nn.Module):
         elif self.model_type == "rgat":
             # TODO: SHOULD WE STACK (H, X) as init node feature
             self.spatial_model = RGAT(
-                in_channels=feature_dim,
+                in_channels=feature_dim + position_dim,
                 out_channels=hidden_dim,
                 hidden_channels=hidden_dim,
                 num_heads=num_heads,
                 num_relations=num_relations,
                 num_layers=num_layers,
-                edge_dim=1,
+                edge_dim=edge_dim,
                 num_blocks=num_blocks,
                 concat=concat,
                 dropout=dropout,
@@ -532,7 +532,9 @@ class FuncGNN(nn.Module):
             edge_type = edge_attr[:, 0].int()
             # corresponding edge features
             edge_feat = edge_attr[:, 1]
-            h = self.spatial_model(h, edge_index, edge_type, edge_feat)
+
+            input = torch.cat((h, x), dim=-1)
+            h = self.spatial_model(input, edge_index, edge_type, edge_feat)
         else:
             raise Exception("Not implemented!")
 

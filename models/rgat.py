@@ -90,7 +90,7 @@ class RGAT(torch.nn.Module):
             x = conv(
                 x, edge_index, edge_type, edge_attr
             )  # Pass edge_attr to the convolution
-            x = bn(x)  # Apply batch normalization
+            # x = bn(x)  # Apply batch normalization
             x = F.relu(x)
             x = F.dropout(x, p=self.dropout, training=self.training)
 
