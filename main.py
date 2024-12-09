@@ -39,14 +39,14 @@ parser.add_argument(
 parser.add_argument(
     "--batch_size",
     type=int,
-    default=16,
+    default=8,
     help="batch size",
 )
 
 parser.add_argument(
     "--rank",
     type=int,
-    default=16,
+    default=8,
     help="rank for LoRA",
 )
 
@@ -238,32 +238,32 @@ def main():
     best_epoch = 0
 
     for epoch in range(0, args.epochs):
-        train_loss, train_F1, train_acc, train_precision, train_recall = train(
-            model, optimizer, epoch, train_loader, weight_loss_by_conf_score
+        train_loss, train_f1, train_acc, train_precision, train_recall = train(
+            model, optimizer, epoch, train_loader, device, weight_loss_by_conf_score
         )
         if args.tensorboard:
             writer.add_scalar("Train/Loss", train_loss, epoch)
-            writer.add_scalar("Train/F1", train_F1, epoch)
+            writer.add_scalar("Train/F1", train_f1, epoch)
             writer.add_scalar("Train/Acc", train_acc, epoch)
             writer.add_scalar("Train/Precision", train_precision, epoch)
             writer.add_scalar("Train/Recall", train_recall, epoch)
 
-        val_loss, val_F1, val_acc, val_precision, val_recall = val(
-            model, epoch, val_loader, "val", weight_loss_by_conf_score
+        val_loss, val_f1, val_acc, val_precision, val_recall = val(
+            model, epoch, val_loader, "val", device, weight_loss_by_conf_score
         )
-        test_loss, test_F1, test_acc, test_precision, test_recall = val(
-            model, epoch, test_loader, "test", weight_loss_by_conf_score
+        test_loss, test_f1, test_acc, test_precision, test_recall = val(
+            model, epoch, test_loader, "test", device, weight_loss_by_conf_score
         )
 
         if args.tensorboard:
             writer.add_scalar("Val/Loss", val_loss, epoch)
-            writer.add_scalar("Val/F1", val_F1, epoch)
+            writer.add_scalar("Val/F1", val_f1, epoch)
             writer.add_scalar("Val/Acc", val_acc, epoch)
             writer.add_scalar("Val/Precision", val_precision, epoch)
             writer.add_scalar("Val/Recall", val_recall, epoch)
 
             writer.add_scalar("Test/Loss", test_loss, epoch)
-            writer.add_scalar("Test/F1", test_F1, epoch)
+            writer.add_scalar("Test/F1", test_f1, epoch)
             writer.add_scalar("Test/Acc", test_acc, epoch)
             writer.add_scalar("Test/Precision", test_precision, epoch)
             writer.add_scalar("Test/Recall", test_recall, epoch)
@@ -314,7 +314,7 @@ def add_negative_samples(task_indices, labels, num_tasks=4598):
     return task_indices, labels
 
 
-def train(model, optimizer, epoch, loader, weight_loss_by_conf_score=False):
+def train(model, optimizer, epoch, loader, device, weight_loss_by_conf_score=False):
     model.train()
 
     ce_loss = torch.nn.CrossEntropyLoss()
@@ -341,51 +341,53 @@ def train(model, optimizer, epoch, loader, weight_loss_by_conf_score=False):
 
         tasks_indices, labels = add_negative_samples(tasks_indices, labels)
 
-        # dictionary mapping b (protein idx) -> (num_tasks_for_protein_b, classes)
-        y_pred_dict = model(
-            h, x, edge_index, edge_attr, batch, tasks_indices, batch_size
-        )
+        # for mixed precision
+        with torch.autocast(device_type="cuda" if torch.cuda.is_available() else "cpu"):
+            # dictionary mapping b (protein idx) -> (num_tasks_for_protein_b, classes)
+            y_pred_dict = model(
+                h, x, edge_index, edge_attr, batch, tasks_indices, batch_size
+            )
 
-        loss = 0
-        protein_idxs = tasks_indices[:, 0]
-        unique_protein_idxs = torch.unique(protein_idxs)
-        valid_loss = False
-        # iterate over batch of proteins
-        for b in range(batch_size):
-            protein_idx = unique_protein_idxs[b]
-            mask = protein_idxs == protein_idx
-            # labels corresponding to protein with protein_idx
-            y = labels[:, 1][mask]
-            y_pred = y_pred_dict[b]
+            loss = 0
+            protein_idxs = tasks_indices[:, 0]
+            unique_protein_idxs = torch.unique(protein_idxs)
+            valid_loss = False
+            # iterate over batch of proteins
+            for b in range(batch_size):
+                protein_idx = unique_protein_idxs[b]
+                mask = protein_idxs == protein_idx
+                # labels corresponding to protein with protein_idx
+                y = labels[:, 1][mask]
+                y_pred = y_pred_dict[b]
 
-            preds = torch.argmax(y_pred, dim=-1)
-            TN += torch.logical_and(preds == y, y == 2).sum()
-            TP += torch.logical_and(preds == y, y != 2).sum()
-            FP += torch.logical_and(preds != y, y == 2).sum()
-            FN += torch.logical_and(preds != y, y != 2).sum()
+                preds = torch.argmax(y_pred, dim=-1)
+                TN += torch.logical_and(preds == y, y == 2).sum()
+                TP += torch.logical_and(preds == y, y != 2).sum()
+                FP += torch.logical_and(preds != y, y == 2).sum()
+                FN += torch.logical_and(preds != y, y != 2).sum()
 
-            protein_loss = ce_loss(y_pred, y)
-            if weight_loss_by_conf_score:
-                protein_loss *= data.conf_score[b]
+                protein_loss = ce_loss(y_pred, y)
+                if weight_loss_by_conf_score:
+                    protein_loss *= data.conf_score[b]
 
-            num_protein_tasks = y_pred.size(0)
-            new_loss = protein_loss  # / num_protein_tasks
-            # print(new_loss)
-            # HACK ensure loss is real num
-            if not (torch.isnan(new_loss).any() or torch.isinf(new_loss).any()):
-                valid_loss = True
-                loss += new_loss
-            # else:
-            # loss += torch.tensor(0., device=device)
+                num_protein_tasks = y_pred.size(0)
+                new_loss = protein_loss  # / num_protein_tasks
+                # print(new_loss)
+                # HACK ensure loss is real num
+                if not (torch.isnan(new_loss).any() or torch.isinf(new_loss).any()):
+                    valid_loss = True
+                    loss += new_loss
+                # else:
+                # loss += torch.tensor(0., device=device)
 
-        if valid_loss:
-            optimizer.zero_grad()
+            if valid_loss:
+                optimizer.zero_grad()
 
-            loss.backward()
-            torch.nn.utils.clip_grad_norm_(model.parameters(), 0.5)
-            optimizer.step()
-            res["loss"] += loss.item()
-            res["counter"] += batch_size
+                loss.backward()
+                torch.nn.utils.clip_grad_norm_(model.parameters(), 0.5)
+                optimizer.step()
+                res["loss"] += loss.item()
+                res["counter"] += batch_size
 
     F1 = TP / (TP + 0.5 * (FP + FN))
     acc = (TP + TN) / (TP + TN + FP + FN)
@@ -399,7 +401,7 @@ def train(model, optimizer, epoch, loader, weight_loss_by_conf_score=False):
     return res["loss"] / res["counter"], F1, acc, precision, recall
 
 
-def val(model, epoch, loader, partition, weight_loss_by_conf_score=False):
+def val(model, epoch, loader, partition, device, weight_loss_by_conf_score=False):
     model.eval()
 
     ce_loss = torch.nn.CrossEntropyLoss()
@@ -428,35 +430,37 @@ def val(model, epoch, loader, partition, weight_loss_by_conf_score=False):
 
             tasks_indices, labels = add_negative_samples(tasks_indices, labels)
 
-            # dictionary mapping b (protein idx) -> (num_tasks_for_protein_b, classes)
-            y_pred_dict = model(
-                h, x, edge_index, edge_attr, batch, tasks_indices, batch_size
-            )
+            # for mixed precision
+            with torch.autocast(device_type="cuda" if torch.cuda.is_available() else "cpu"):
+                # dictionary mapping b (protein idx) -> (num_tasks_for_protein_b, classes)
+                y_pred_dict = model(
+                    h, x, edge_index, edge_attr, batch, tasks_indices, batch_size
+                )
 
-            loss = 0
-            protein_idxs = tasks_indices[:, 0]
-            unique_protein_idxs = torch.unique(protein_idxs)
-            for b in range(batch_size):
-                protein_idx = unique_protein_idxs[b]
-                mask = protein_idxs == protein_idx
-                y = labels[:, 1][mask]
-                y_pred = y_pred_dict[b]
+                loss = 0
+                protein_idxs = tasks_indices[:, 0]
+                unique_protein_idxs = torch.unique(protein_idxs)
+                for b in range(batch_size):
+                    protein_idx = unique_protein_idxs[b]
+                    mask = protein_idxs == protein_idx
+                    y = labels[:, 1][mask]
+                    y_pred = y_pred_dict[b]
 
-                preds = torch.argmax(y_pred, dim=-1)
-                TN += torch.logical_and(preds == y, y == 2).sum()
-                TP += torch.logical_and(preds == y, y != 2).sum()
-                FP += torch.logical_and(preds != y, y == 2).sum()
-                FN += torch.logical_and(preds != y, y != 2).sum()
+                    preds = torch.argmax(y_pred, dim=-1)
+                    TN += torch.logical_and(preds == y, y == 2).sum()
+                    TP += torch.logical_and(preds == y, y != 2).sum()
+                    FP += torch.logical_and(preds != y, y == 2).sum()
+                    FN += torch.logical_and(preds != y, y != 2).sum()
 
-                protein_loss = ce_loss(y_pred, y)
-                if weight_loss_by_conf_score:
-                    protein_loss *= data.conf_score[b]
-                # print(f"Protein loss: {protein_loss / y_pred.size(0)} for protein: {b}")
-                num_protein_tasks = y_pred.size(0)
-                loss += protein_loss  # / num_protein_tasks
+                    protein_loss = ce_loss(y_pred, y)
+                    if weight_loss_by_conf_score:
+                        protein_loss *= data.conf_score[b]
+                    # print(f"Protein loss: {protein_loss / y_pred.size(0)} for protein: {b}")
+                    num_protein_tasks = y_pred.size(0)
+                    loss += protein_loss  # / num_protein_tasks
 
-            res["loss"] += loss.item()
-            res["counter"] += batch_size
+                res["loss"] += loss.item()
+                res["counter"] += batch_size
 
     F1 = TP / (TP + 0.5 * (FP + FN))
     acc = (TP + TN) / (TP + TN + FP + FN)

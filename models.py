@@ -204,6 +204,7 @@ class EquivariantMPLayer(nn.Module):
             act,
         )
 
+    @torch.autocast(device_type="cuda" if torch.cuda.is_available() else "cpu")
     def node_message_function(
         self,
         source_node_embed,  # h_i
@@ -217,7 +218,7 @@ class EquivariantMPLayer(nn.Module):
 
         unique_edge_type_idxs = torch.unique(edge_type_idxs)
 
-        m_agg = torch.zeros((num_edges, self.hidden_channels)).to(self.device)
+        m_agg = torch.zeros((num_edges, self.hidden_channels), device=self.device, dtype=source_node_embed.dtype)
         for edge_type_idx in unique_edge_type_idxs:
             # A_r, B_r = self.weight_dict[int(edge_type_idx.item())]
             A_r = self.weight_dict[f"{int(edge_type_idx.item())}_A"]
@@ -247,6 +248,7 @@ class EquivariantMPLayer(nn.Module):
 
         return m_agg
 
+    @torch.autocast(device_type="cuda" if torch.cuda.is_available() else "cpu")
     def forward(self, node_embed, node_pos, edge_index, edge_attr):
         row, col = edge_index
 
@@ -322,6 +324,7 @@ class EquivariantGNN(nn.Module):
         aggr = self.aggregation(node_embed, batch_index)
         return self.f_predict(aggr)
 
+    @torch.autocast(device_type="cuda" if torch.cuda.is_available() else "cpu")
     def forward(self, x, h, edge_index, edge_attr, batch):
         node_embed = self.encode(x, h, edge_index, edge_attr)
         # pred = self._predict(node_embed, batch)
@@ -366,6 +369,7 @@ class E3Pooling(nn.Module):
 
         self.pool = global_mean_pool
 
+    @torch.autocast(device_type="cuda" if torch.cuda.is_available() else "cpu")
     def forward(self, h, batch, edge_index=None, x=None, edge_attr=None):
         if self.model_type == "egnn_old":
             h = self.e3_backbone(h, edge_index, x, edge_attr=edge_attr)
@@ -454,6 +458,7 @@ class FuncGNN(nn.Module):
         # task embedding
         self.tasks_embed = nn.Embedding(num_tasks, task_embed_dim)
 
+    @torch.autocast(device_type="cuda" if torch.cuda.is_available() else "cpu")
     def forward(self, h, x, edge_index, edge_attr, batch, tasks_indices, batch_size):
         # Apply E(3)-equivariant layers
         if self.model_type == "egnn_old":
