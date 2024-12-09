@@ -32,16 +32,20 @@ def adjacency_features(adj_matrix, D):
     try:
         adj_matrix = adj_matrix.to(device=DEVICE, dtype=torch.float32)
         structure_features = torch.ones((adj_matrix.shape[0], D), device=DEVICE)
+        Apow = adj_matrix
+        for d in range(1, D):
+            structure_features[:, d] = torch.diag(Apow.to_dense())
+            if d < D-1:
+                Apow = adj_matrix @ Apow
+            torch.cuda.empty_cache()
     except:
         adj_matrix = adj_matrix.to(device="cpu", dtype=torch.float32)
         structure_features = torch.ones((adj_matrix.shape[0], D), device="cpu")
-
-    Apow = adj_matrix
-    for d in range(1, D):
-        structure_features[:, d] = torch.diag(Apow.to_dense())
-        if d < D-1:
-            Apow = adj_matrix @ Apow
-        torch.cuda.empty_cache()
+        Apow = adj_matrix
+        for d in range(1, D):
+            structure_features[:, d] = torch.diag(Apow.to_dense())
+            if d < D-1:
+                Apow = adj_matrix @ Apow
 
     adj_matrix = adj_matrix.to("cpu")
 
