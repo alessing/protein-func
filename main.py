@@ -74,7 +74,7 @@ parser.add_argument(
 parser.add_argument(
     "--hidden_dim",
     type=int,
-    default=4,
+    default=32,
     help="hidden dimension",
 )
 
@@ -141,7 +141,7 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 loss_mse = nn.MSELoss()
 
 # DATASET_DIR = "data/processed_data/protein_inputs"
-DATASET_DIR = "data/processed_data/hdf5_files_d_10"
+DATASET_DIR = "data/processed_data/hdf5_files_d_10_2"
 
 
 def create_summary_writer(
