@@ -254,9 +254,11 @@ def main():
 
     best_epoch = 0
 
+    scaler = torch.amp.GradScaler("cuda" if torch.cuda.is_available() else "cpu")
+
     for epoch in range(0, args.epochs):
         train_loss, train_f1, train_acc, train_precision, train_recall = train(
-            model, optimizer, epoch, train_loader, device, weight_loss_by_conf_score
+            model, optimizer, epoch, train_loader, scaler, device, weight_loss_by_conf_score
         )
         if args.tensorboard:
             writer.add_scalar("Train/Loss", train_loss, epoch)
@@ -339,7 +341,7 @@ def add_negative_samples(task_indices, labels, num_tasks=4598):
     return task_indices, labels
 
 
-def train(model, optimizer, epoch, loader, device, weight_loss_by_conf_score=False):
+def train(model, optimizer, epoch, loader, scaler, device, weight_loss_by_conf_score=False):
     model.train()
 
     ce_loss = torch.nn.CrossEntropyLoss()
@@ -400,9 +402,11 @@ def train(model, optimizer, epoch, loader, device, weight_loss_by_conf_score=Fal
 
             loss = loss/batch_size
             optimizer.zero_grad()
-            loss.backward()
+            scaler.scale(loss).backward()  #3 call backward pass on scaled loss
             torch.nn.utils.clip_grad_norm_(model.parameters(), 0.5)
-            optimizer.step()
+            scaler.step(optimizer)  #4 unscale gradients, do weight update if not Infs or NaNs
+            scaler.update()  #5 update scale factor for next iteration
+            # optimizer.step()
             res["loss"] += loss.item()
 
     F1 = TP / (TP + 0.5 * (FP + FN))
