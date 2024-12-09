@@ -191,6 +191,7 @@ class RGATConv(MessagePassing):
         dropout: float = 0.0,
         edge_dim: Optional[int] = None,
         bias: bool = True,
+        lora_rank=0,
         **kwargs,
     ):
         kwargs.setdefault('aggr', 'add')
@@ -283,6 +284,17 @@ class RGATConv(MessagePassing):
                             self.in_channels // self.num_blocks,
                             (self.heads * self.out_channels) //
                             self.num_blocks))
+        elif lora_rank > 0:
+            self.lora_rank = lora_rank
+            self.a = Parameter(
+                torch.empty(self.num_relations, self.in_channels,
+                            self.lora_rank))
+            self.b = Parameter(
+                torch.empty(self.num_relations, self.lora_rank,
+                            self.heads * self.out_channels))
+            self.w_shared = Parameter(
+                torch.empty(self.in_channels,
+                            self.heads * self.out_channels))
         else:
             self.weight = Parameter(
                 torch.empty(self.num_relations, self.in_channels,
@@ -391,6 +403,12 @@ class RGATConv(MessagePassing):
             outi = outi.contiguous().view(-1, self.heads * self.out_channels)
             outj = torch.einsum('abcd,acde->ace', x_j, w)
             outj = outj.contiguous().view(-1, self.heads * self.out_channels)
+        elif self.lora_rank > 0:
+            a = torch.index_select(self.a, 0, edge_type)
+            b = torch.index_select(self.b, 0, edge_type)
+            outi = torch.bmm(torch.bmm(x_i.unsqueeze(1), a), b).squeeze(-2) + torch.bmm(self.w_shared.unsqueeze(0), x_i.unsqueeze(1))
+            outj = torch.bmm(torch.bmm(x_i.unsqueeze(1), a), b).squeeze(-2) + torch.bmm(self.w_shared.unsqueeze(0), x_i.unsqueeze(1))
+
         else:  # No regularization/Basis-decomposition ========================
             if self.num_bases is None:
                 w = self.weight
