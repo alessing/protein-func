@@ -39,14 +39,14 @@ parser.add_argument(
 parser.add_argument(
     "--batch_size",
     type=int,
-    default=16,
+    default=1,
     help="batch size",
 )
 
 parser.add_argument(
     "--num_layers",
     type=int,
-    default=16,
+    default=2,
     help="number of layers in spatial model",
 )
 
@@ -67,7 +67,7 @@ parser.add_argument(
 parser.add_argument(
     "--hidden_dim",
     type=int,
-    default=256,
+    default=16,
     help="hidden dimension",
 )
 
@@ -119,7 +119,8 @@ args = parser.parse_args()
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 loss_mse = nn.MSELoss()
 
-DATASET_DIR = "data/processed_data/protein_inputs"
+#DATASET_DIR = "data/processed_data/protein_inputs"
+DATASET_DIR = "data/processed_data/hdf5_files_d_10"
 # DATASET_DIR = "temp_proteins"
 
 
@@ -177,7 +178,7 @@ def main():
         model_type=model_type,
     ).to(device)
 
-    protein_data, dl = get_dataloader(DATASET_DIR, batch_size=batch_size)
+    protein_data, dl, edge_types = get_dataloader(DATASET_DIR, batch_size=batch_size, struct_feat_scaling=False)
     # protein_data, dl = create_fake_dataloader(num_proteins=1000, num_tasks=4598)
 
     train_data, temp_data = train_test_split(
@@ -319,7 +320,7 @@ def train(model, optimizer, epoch, loader):
         optimizer.zero_grad()
 
         loss = loss/batch_size
-        print(loss.item())
+        print("l", loss.item())
         loss.backward()
         torch.nn.utils.clip_grad_norm_(model.parameters(), 0.5)
         optimizer.step()

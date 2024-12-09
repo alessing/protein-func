@@ -116,7 +116,8 @@ def load_protein(prot_num, filename, edge_types, struct_feat_scaling='log'):
 
 
         if struct_feat_scaling:
-            structure_feats = torch.log(1 + structure_feats)
+            #structure_feats = torch.log(1 + structure_feats)
+            structure_feats = (1/5)*torch.max(structure_feats, 64) + torch.log(1 + structure_feats)
 
         d = Data(
             edge_index=edge_index,
