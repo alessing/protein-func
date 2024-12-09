@@ -106,9 +106,18 @@ def main():
 
     parser = PDB.PDBParser()
     protein_funcs = pd.read_csv(f"{PROCESSED_DATA}/protein_functions.csv")
+    failed_proteins = []
     for filename in tqdm(os.listdir(f"{RAW_DATA}/{ALPHA_FOLD_DIR}")):
         if filename[-4:] == ".pdb":
-            save_hdf5(filename, protein_funcs, parser, args.d)
+            try:
+                save_hdf5(filename, protein_funcs, parser, args.d)
+            except:
+                print(filename)
+                failed_proteins.append(filename)
+    
+    with open(f"{PROCESSED_DATA}/failed_proteins.txt", 'w') as file:
+        for item in failed_proteins:
+            file.write(item + '\n')
 
 if __name__ == '__main__':
     main()
