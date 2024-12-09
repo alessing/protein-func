@@ -10,7 +10,6 @@ from tqdm import tqdm
 
 np.random.seed(42)
 
-#TODO: Matt put relation type stuff back into dataloader
 
 def generate_random_graph(num_nodes, edge_prob):
     """
@@ -68,6 +67,8 @@ def create_fake_dataloader(num_proteins=100, num_tasks=1000):
         task_indices = torch.randint(0, num_tasks, (num_tasks, 2), dtype=torch.long)
         # task_indices = torch.randint(1, num_functio, (num_tasks, 2), dtype=torch.long)
         labels = torch.randint_like(task_indices, low=0, high=2)
+        edge_feats = torch.rand((3, edge_indices.shape[1])).float()
+        conf_score = torch.rand((1,)).float()
 
         labels[:, 0] = i
         task_indices[:, 0] = i
@@ -81,6 +82,8 @@ def create_fake_dataloader(num_proteins=100, num_tasks=1000):
             task_indices=task_indices,
             labels=labels,
             pos=pos,
+            edge_attr=edge_feats.T,
+            conf_score=conf_score,
         )
 
         protein_datas.append(d)
@@ -88,7 +91,7 @@ def create_fake_dataloader(num_proteins=100, num_tasks=1000):
     return protein_datas, DataLoader(protein_datas, batch_size=4)
 
 
-def load_protein(prot_num, filename):
+def load_protein(prot_num, filename, edge_types, struct_feat_scaling='log'):
     with h5py.File(filename, "r") as f:
         pos = torch.tensor(f["pos"][:])
         atom_type = torch.tensor(f["atom_type"][:], dtype=torch.long)
@@ -96,11 +99,24 @@ def load_protein(prot_num, filename):
         edge_index = torch.tensor(f["edge_index"][:], dtype=torch.long)
         task_index = torch.tensor(f["task_index"][:], dtype=torch.long)
         labels = torch.tensor(f["labels"][:], dtype=torch.long)
+        edge_feats = torch.tensor(f["edge_feats"]).float()
+        conf_score = torch.tensor(f["confidence_score"][0]).float() / 10
 
         assert labels.shape == task_index.shape
         prot_num = torch.full_like(task_index, prot_num)
         task_index = torch.stack((prot_num, task_index), dim=1)
         labels = torch.stack((prot_num, labels), dim=1)
+
+        edge_feats = torch.vstack((torch.zeros((1, edge_feats.shape[1])), edge_feats))
+        for i, edge_type in enumerate(edge_types.keys()):
+            edge_type = torch.Tensor(edge_type)
+            edge_mask = (edge_feats[1:3].T == edge_type).all(dim=1)
+            edge_feats[0, edge_mask] = i
+        edge_feats = edge_feats[[0, 3]]
+
+
+        if struct_feat_scaling:
+            structure_feats = torch.log(1 + structure_feats)
 
         d = Data(
             edge_index=edge_index,
@@ -109,22 +125,46 @@ def load_protein(prot_num, filename):
             task_indices=task_index,
             labels=labels,
             pos=pos,
+            edge_attr=edge_feats.T,
+            conf_score=conf_score,
         )
         return d
 
 
-def get_dataset(dataset_dir):
+def get_dataset(dataset_dir,struct_feat_scaling='log'):
     dataset = []
 
+    edge_types = {
+        (5, 5): 0,
+        (5, 6): 1,
+        (5, 7): 2,
+        (5, 15): 3,
+        (6, 5): 4,
+        (6, 6): 5,
+        (6, 7): 6,
+        (6, 15): 7,
+        (7, 5): 8,
+        (7, 6): 9,
+        (7, 7): 10,
+        (7, 15): 11,
+        (15, 5): 12,
+        (15, 6): 13,
+        (15, 7): 14,
+        (15, 15): 15,
+    }
     for i, fname in tqdm(enumerate(glob.glob(os.path.join(dataset_dir, "*.hdf5")))):
-        dataset.append(load_protein(i, fname))
+        print("Loading", fname)
+        d = load_protein(i, fname, edge_types, struct_feat_scaling=struct_feat_scaling)
+        dataset.append(d)
 
-    return dataset
+    print(edge_types)
+
+    return dataset, edge_types
 
 
-def get_dataloader(dataset_dir, batch_size=16):
-    dataset = get_dataset(dataset_dir)
-    return dataset, DataLoader(dataset, batch_size)
+def get_dataloader(dataset_dir, batch_size=16, struct_feat_scaling='log'):
+    dataset, edge_types = get_dataset(dataset_dir, struct_feat_scaling)
+    return dataset, DataLoader(dataset, batch_size), edge_types
 
 
 if __name__ == "__main__":
