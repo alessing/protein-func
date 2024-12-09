@@ -280,10 +280,10 @@ class EquivariantMPLayer(nn.Module):
 
         # batchnorm 
         if self.use_batch_norm:
-            new_node_embed = self.batch_norm(new_node_embed)
+            aggr_node_messages = self.batch_norm(aggr_node_messages)
 
         # dropout 
-        new_node_embed = self.dropout(new_node_embed)
+        new_node_embed = self.dropout(aggr_node_messages)
 
         # activation
         new_node_embed = self.activation(new_node_embed)

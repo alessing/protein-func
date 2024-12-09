@@ -74,7 +74,7 @@ parser.add_argument(
 parser.add_argument(
     "--hidden_dim",
     type=int,
-    default=4,
+    default=32,
     help="hidden dimension",
 )
 
@@ -141,7 +141,7 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 loss_mse = nn.MSELoss()
 
 # DATASET_DIR = "data/processed_data/protein_inputs"
-DATASET_DIR = "data/processed_data/hdf5_files_d_10"
+DATASET_DIR = "data/processed_data/hdf5_files_d_10_2"
 
 
 def create_summary_writer(
@@ -398,12 +398,12 @@ def train(model, optimizer, epoch, loader, device, weight_loss_by_conf_score=Fal
                 num_protein_tasks = y_pred.size(0)
                 loss += protein_loss / num_protein_tasks
 
-            loss = loss/batch_size
-            optimizer.zero_grad()
-            loss.backward()
-            torch.nn.utils.clip_grad_norm_(model.parameters(), 0.5)
-            optimizer.step()
-            res["loss"] += loss.item()
+        loss = loss/batch_size
+        optimizer.zero_grad()
+        loss.backward()
+        torch.nn.utils.clip_grad_norm_(model.parameters(), 0.5)
+        optimizer.step()
+        res["loss"] += loss.item()
 
     F1 = TP / (TP + 0.5 * (FP + FN))
     acc = (TP + TN) / (TP + TN + FP + FN)
