@@ -29,9 +29,13 @@ PERIODIC_TABLE_IDX = {
 DEVICE = 'cuda' if torch.cuda.is_available() else 'cpu'
 
 def adjacency_features(adj_matrix, D):
-    adj_matrix = adj_matrix.to(device=DEVICE, dtype=torch.float32)
+    try:
+        adj_matrix = adj_matrix.to(device=DEVICE, dtype=torch.float32)
+        structure_features = torch.ones((adj_matrix.shape[0], D), device=DEVICE)
+    except:
+        adj_matrix = adj_matrix.to(device="cpu", dtype=torch.float32)
+        structure_features = torch.ones((adj_matrix.shape[0], D), device="cpu")
 
-    structure_features = torch.ones((adj_matrix.shape[0], D), device=DEVICE)
     Apow = adj_matrix
     for d in range(1, D):
         structure_features[:, d] = torch.diag(Apow.to_dense())
@@ -106,18 +110,9 @@ def main():
 
     parser = PDB.PDBParser()
     protein_funcs = pd.read_csv(f"{PROCESSED_DATA}/protein_functions.csv")
-    failed_proteins = []
     for filename in tqdm(os.listdir(f"{RAW_DATA}/{ALPHA_FOLD_DIR}")):
         if filename[-4:] == ".pdb":
-            try:
-                save_hdf5(filename, protein_funcs, parser, args.d)
-            except:
-                print(filename)
-                failed_proteins.append(filename)
-    
-    with open(f"{PROCESSED_DATA}/failed_proteins.txt", 'w') as file:
-        for item in failed_proteins:
-            file.write(item + '\n')
+            save_hdf5(filename, protein_funcs, parser, args.d)
 
 if __name__ == '__main__':
     main()
