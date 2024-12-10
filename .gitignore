@@ -7,3 +7,4 @@ __pycache__
 data/test_dataset/*
 runs/*
 best_models/*
+.vscode
