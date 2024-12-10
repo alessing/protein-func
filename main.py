@@ -267,13 +267,13 @@ def train(model, optimizer, epoch, loader):
     model.train()
 
     ce_loss = torch.nn.CrossEntropyLoss()
-    res = {"epoch": epoch, "loss": 0, "counter": 0}
 
     TP = 0
     TN = 0
     FP = 0
     FN = 0
 
+    protein_losses = []
     for data in tqdm(loader):
         # features h = (atom_types, structure_features)
         h = torch.cat(
@@ -298,7 +298,6 @@ def train(model, optimizer, epoch, loader):
         loss = 0
         protein_idxs = tasks_indices[:, 0]
         unique_protein_idxs = torch.unique(protein_idxs)
-        valid_loss = False
         for b in range(batch_size):
             protein_idx = unique_protein_idxs[b]
             mask = protein_idxs == protein_idx
@@ -311,46 +310,40 @@ def train(model, optimizer, epoch, loader):
             FP += torch.logical_and(preds != y, y == 2).sum()
             FN += torch.logical_and(preds != y, y != 2).sum()
 
-            #print(y_pred)
             protein_loss = ce_loss(y_pred, y)
-
-            num_protein_tasks = y_pred.size(0)
-            loss +=  protein_loss
-
+            loss += protein_loss
+            protein_losses.append(protein_loss.item())
+        
         optimizer.zero_grad()
-
-        res["loss"] += loss.item()
-        loss = loss/batch_size
-        print(loss.item())
         loss.backward()
         torch.nn.utils.clip_grad_norm_(model.parameters(), 0.5)
         optimizer.step()
-        
-        res["counter"] += batch_size
+    
+    avg_protein_loss = sum(protein_losses) / len(protein_losses)
 
     F1 = TP / (TP + 0.5 * (FP + FN))
     acc = (TP + TN) / (TP + TN + FP + FN)
-    precision = TP / (TP + FP)
+    precision = TP / (TP + FP) if TP + FP else 0
     recall = TP / (TP + FN)
     print(
-        "%s epoch %d avg loss: %.5f, f1 score: %.5f, acc: %.5f, precision: %.5f, recall: %.5f"
-        % ("train", epoch, res["loss"] / res["counter"], F1, acc, precision, recall)
+        "%s epoch %d avg protein loss: %.5f, f1 score: %.5f, acc: %.5f, precision: %.5f, recall: %.5f"
+        % ("train", epoch, avg_protein_loss, F1, acc, precision, recall)
     )
 
-    return res["loss"] / res["counter"]
+    return avg_protein_loss
 
 
 def val(model, epoch, loader, partition):
     model.eval()
 
     ce_loss = torch.nn.CrossEntropyLoss()
-    res = {"epoch": epoch, "loss": 0, "counter": 0}
 
     TP = 0
     TN = 0
     FP = 0
     FN = 0
 
+    protein_losses = []
     with torch.no_grad():
         for data in tqdm(loader):
             data = data.to(device)
@@ -374,7 +367,6 @@ def val(model, epoch, loader, partition):
                 h, x, edge_index, edge_attr, batch, tasks_indices, batch_size
             )
 
-            loss = 0
             protein_idxs = tasks_indices[:, 0]
             unique_protein_idxs = torch.unique(protein_idxs)
             for b in range(batch_size):
@@ -390,23 +382,20 @@ def val(model, epoch, loader, partition):
                 FN += torch.logical_and(preds != y, y != 2).sum()
 
                 protein_loss = ce_loss(y_pred, y)
-                # print(f"Protein loss: {protein_loss / y_pred.size(0)} for protein: {b}")
-                num_protein_tasks = y_pred.size(0)
-                loss += protein_loss #/ num_protein_tasks
+                protein_losses.append(protein_loss.item())
 
-            res["loss"] += loss.item()
-            res["counter"] += batch_size
+    avg_protein_loss = sum(protein_losses) / len(protein_losses)
 
     F1 = TP / (TP + 0.5 * (FP + FN))
     acc = (TP + TN) / (TP + TN + FP + FN)
-    precision = TP / (TP + FP)
+    precision = TP / (TP + FP) if TP + FP else 0
     recall = TP / (TP + FN)
     print(
-        "%s epoch %d avg loss: %.5f, f1 score: %.5f, acc: %.5f, precision: %.5f, recall: %.5f"
-        % (partition, epoch, res["loss"] / res["counter"], F1, acc, precision, recall)
+        "%s epoch %d avg protein loss: %.5f, f1 score: %.5f, acc: %.5f, precision: %.5f, recall: %.5f"
+        % (partition, epoch, avg_protein_loss, F1, acc, precision, recall)
     )
 
-    return res["loss"] / res["counter"]
+    return avg_protein_loss
 
 
 if __name__ == "__main__":
