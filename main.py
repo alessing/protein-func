@@ -125,7 +125,7 @@ parser.add_argument("--weight_decay", type=float, default=1e-6, help="weight dec
 parser.add_argument("--lr", type=float, default=1e-4, help="learning rate")
 
 parser.add_argument(
-    "--tensorboard", type=str_to_bool, default=False, help="Uses tensorboard"
+    "--tensorboard", type=str_to_bool, default=True, help="Uses tensorboard"
 )
 
 
@@ -147,6 +147,7 @@ DATASET_DIR = "data/processed_data/hdf5_files_d_20"
 
 
 def create_summary_writer(lr, weight_decay, hidden_dim, num_layers, use_conf, num_blocks, lora_dim, feature_dim):
+    os.makedirs("runs", exist_ok=True)
     dt = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
     log_dir = f"./runs/{dt}_funcgnn_lr_{lr}_wd_{weight_decay}_hid_size_{hidden_dim}_num_layers_{num_layers}_conf_{use_conf}_nb_{num_blocks}_lora_{lora_dim}_fdim_{feature_dim}/"
 
