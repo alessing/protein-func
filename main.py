@@ -32,42 +32,42 @@ def str_to_bool(value):
 parser.add_argument(
     "--epochs",
     type=int,
-    default=100,
+    default=200,
     help="number of epochs to train (default: 10)",
 )
 
 parser.add_argument(
     "--batch_size",
     type=int,
-    default=8,
+    default=1,
     help="batch size",
 )
 
 parser.add_argument(
     "--num_layers",
     type=int,
-    default=3,
+    default=16,
     help="number of layers in spatial model",
 )
 
 parser.add_argument(
     "--feature_dim",
     type=int,
-    default=11,
+    default=21,
     help="feature dimension",
 )
 
 parser.add_argument(
     "--edge_dim",
     type=int,
-    default=0,
+    default=1,
     help="edge feature dimension",
 )
 
 parser.add_argument(
     "--hidden_dim",
     type=int,
-    default=16,
+    default=256,
     help="hidden dimension",
 )
 
@@ -79,9 +79,16 @@ parser.add_argument(
 )
 
 parser.add_argument(
+    "--num_blocks",
+    type=int,
+    default=0,
+    help="Number of blocks for GATConv",
+)
+
+parser.add_argument(
     "--task_embed_dim",
     type=int,
-    default=32,
+    default=128,
     help="task embedding latent dimension",
 )
 
@@ -95,7 +102,7 @@ parser.add_argument(
 parser.add_argument(
     "--lora_dim",
     type=int,
-    default=5,
+    default=8,
     help="lora low rank dim. When 0 turns off lora",
 )
 
@@ -134,13 +141,13 @@ args = parser.parse_args()
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 loss_mse = nn.MSELoss()
 
-DATASET_DIR = "data/processed_data/hdf5_files_d_10"
+DATASET_DIR = "data/processed_data/hdf5_files_d_20"
 # DATASET_DIR = "temp_proteins"
 
 
-def create_summary_writer(lr, weight_decay, hidden_size, num_equivariant_layers):
+def create_summary_writer(lr, weight_decay, hidden_dim, num_layers, use_conf, num_blocks, lora_dim, feature_dim):
     dt = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
-    log_dir = f"./runs/{dt}_funcgnn_lr_{lr}_wd_{weight_decay}_hid_size_{hidden_size}_num_equi_layers_{num_equivariant_layers}/"
+    log_dir = f"./runs/{dt}_funcgnn_lr_{lr}_wd_{weight_decay}_hid_size_{hidden_dim}_num_layers_{num_layers}_conf_{use_conf}_nb_{num_blocks}_lora_{lora_dim}_fdim_{feature_dim}/"
 
     writer = SummaryWriter(log_dir)
     return writer
@@ -181,6 +188,11 @@ def main():
     model_type = args.model_type
     use_conf_score= args.use_conf_score
     lora_dim = args.lora_dim
+    num_blocks = args.num_blocks
+    num_blocks = None if num_blocks == 0 else num_blocks
+
+    # Orthogonal methods
+    assert ((num_blocks == None) and (lora_dim > 0)) or ((num_blocks > 0) and (lora_dim == 0))
 
     model = FuncGNN(
         num_layers,
@@ -218,7 +230,8 @@ def main():
     optimizer = optim.Adam(model.parameters(), lr=lr, weight_decay=weight_decay)
 
     if args.tensorboard:
-        writer = create_summary_writer(lr, weight_decay, hidden_dim, num_layers)
+        writer = create_summary_writer(lr, weight_decay, hidden_dim, num_layers, use_conf_score, num_blocks, lora_dim, feature_dim)
+        
 
     # # early stopping
     early_stopper = EarlyStopper(patience=10, min_delta=0.005)
@@ -252,7 +265,7 @@ def main():
 
             torch.save(
                 model.state_dict(),
-                f"best_models/funcgnn.pt",
+                f"best_models/funcgnn_lr_{lr}_wd_{weight_decay}_hid_size_{hidden_dim}_num_layers_{num_layers}_conf_{use_conf_score}_nb_{num_blocks}_lora_{lora_dim}_fdim_{feature_dim}.pt",
             )
 
         print(
@@ -260,9 +273,9 @@ def main():
             % (best_train_loss, best_val_loss, best_test_loss, best_epoch)
         )
 
-        if early_stopper.early_stop(val_loss):
-            print(f"EARLY STOPPED")
-            break
+        # if early_stopper.early_stop(val_loss):
+        #     print(f"EARLY STOPPED")
+        #     break
 
     return best_train_loss, best_val_loss, best_test_loss, best_epoch, total_params
 
@@ -341,7 +354,7 @@ def train(model, optimizer, epoch, loader, use_conf_score=True):
 
         res["loss"] += loss.item()
         loss = loss/batch_size
-        print(loss.item())
+        # print(loss.item())
         loss.backward()
         torch.nn.utils.clip_grad_norm_(model.parameters(), 0.5)
         optimizer.step()
