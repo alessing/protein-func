@@ -4,6 +4,7 @@ from model.gcl import E_GCL, unsorted_segment_sum
 import torch
 from torch import nn
 from torch_geometric.nn import global_add_pool, global_mean_pool, GAT
+from models.rgat import RGAT
 
 
 class E_GCL_mask(E_GCL):
@@ -243,6 +244,14 @@ class FuncGNN(nn.Module):
                 out_channels=hidden_dim,
                 dropout=dropout,
             )
+        elif self.model_type == 'rgat':
+            self.spatial_model = RGAT(
+                in_channels=feature_dim + position_dim,
+                hidden_channels=hidden_dim,
+                num_layers=num_layers,
+                out_channels=hidden_dim,
+                dropout=dropout,
+            )
         else:
             raise Exception("Not implemented!")
 
@@ -271,6 +280,11 @@ class FuncGNN(nn.Module):
                 h, x = egnn(h, x, edge_index, edge_attr)
 
         elif self.model_type == "gat":
+            input = torch.cat((h, x), dim=-1)
+            h = self.spatial_model(
+                x=input, edge_index=edge_index, batch=batch, batch_size=batch_size
+            )
+        elif self.model_type == "rgat":
             input = torch.cat((h, x), dim=-1)
             h = self.spatial_model(
                 x=input, edge_index=edge_index, batch=batch, batch_size=batch_size

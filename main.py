@@ -10,7 +10,7 @@ from torch.utils.tensorboard import SummaryWriter
 import datetime
 import os
 
-from models import FuncGNN
+from model_wrap import FuncGNN
 
 torch.manual_seed(42)
 
@@ -102,7 +102,7 @@ parser.add_argument(
 parser.add_argument(
     "--model_type",
     type=str,
-    default="egnn",
+    default="rgat",
     help="Model type, either EGNN or GAT (default: egnn)",
 )
 
@@ -311,7 +311,6 @@ def train(model, optimizer, epoch, loader):
             FP += torch.logical_and(preds != y, y == 2).sum()
             FN += torch.logical_and(preds != y, y != 2).sum()
 
-            #print(y_pred)
             protein_loss = ce_loss(y_pred, y)
 
             num_protein_tasks = y_pred.size(0)
