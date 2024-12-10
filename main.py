@@ -278,11 +278,11 @@ def main():
             best_epoch = epoch
 
         # save model
-        os.makedirs("model_checkpoints", exist_ok=True)
+        os.makedirs("model_checkpoints/funcgnn_lr_{lr}_wd_{weight_decay}_hid_size_{hidden_dim}_num_layers_{num_layers}_conf_{use_conf_score}_nb_{num_blocks}_lora_{lora_dim}_fdim_{feature_dim}_epoch_{epoch}", exist_ok=True)
 
         torch.save(
             model.state_dict(),
-            f"model_checkpoints/funcgnn_lr_{lr}_wd_{weight_decay}_hid_size_{hidden_dim}_num_layers_{num_layers}_conf_{use_conf_score}_nb_{num_blocks}_lora_{lora_dim}_fdim_{feature_dim}_epoch_{epoch}.pt",
+            f"model_checkpoints/funcgnn_lr_{lr}_wd_{weight_decay}_hid_size_{hidden_dim}_num_layers_{num_layers}_conf_{use_conf_score}_nb_{num_blocks}_lora_{lora_dim}_fdim_{feature_dim}_epoch_{epoch}/epoch_{epoch}.pt",
         )
 
         print(
