@@ -93,6 +93,13 @@ parser.add_argument(
 )
 
 parser.add_argument(
+    "--lora_dim",
+    type=int,
+    default=5,
+    help="lora low rank dim. When 0 turns off lora",
+)
+
+parser.add_argument(
     "--num_classes",
     type=int,
     default=3,
@@ -112,6 +119,14 @@ parser.add_argument("--lr", type=float, default=1e-4, help="learning rate")
 
 parser.add_argument(
     "--tensorboard", type=str_to_bool, default=False, help="Uses tensorboard"
+)
+
+
+parser.add_argument(
+    "--use_conf_score",
+    default=True,
+    type=bool,
+    help='Whether to use conf score weighting in loss func'
 )
 
 args = parser.parse_args()
@@ -164,6 +179,8 @@ def main():
     num_classes = args.num_classes
     position_dim = args.position_dim
     model_type = args.model_type
+    use_conf_score= args.use_conf_score
+    lora_dim = args.lora_dim
 
     model = FuncGNN(
         num_layers,
@@ -175,6 +192,7 @@ def main():
         position_dim,
         num_classes,
         model_type=model_type,
+        lora_dim=lora_dim
     ).to(device)
 
     #protein_data, dl = get_dataloader(DATASET_DIR, batch_size=batch_size)
@@ -211,12 +229,12 @@ def main():
     best_epoch = 0
 
     for epoch in range(0, args.epochs):
-        train_loss = train(model, optimizer, epoch, train_loader)
+        train_loss = train(model, optimizer, epoch, train_loader, use_conf_score=use_conf_score)
         if args.tensorboard:
             writer.add_scalar("Loss/train", train_loss, epoch)
 
-        val_loss = val(model, epoch, val_loader, "val")
-        test_loss = val(model, epoch, test_loader, "test")
+        val_loss = val(model, epoch, val_loader, "val", use_conf_score=use_conf_score)
+        test_loss = val(model, epoch, test_loader, "test", use_conf_score=use_conf_score)
 
         if args.tensorboard:
             writer.add_scalar("Loss/val", val_loss, epoch)
@@ -263,7 +281,7 @@ def add_negative_samples(task_indices, labels, num_tasks=4598):
     return task_indices, labels
 
 
-def train(model, optimizer, epoch, loader):
+def train(model, optimizer, epoch, loader, use_conf_score=True):
     model.train()
 
     ce_loss = torch.nn.CrossEntropyLoss()
@@ -313,6 +331,8 @@ def train(model, optimizer, epoch, loader):
             FN += torch.logical_and(preds != y, y != 2).sum()
 
             protein_loss = ce_loss(y_pred, y)
+            if use_conf_score:
+                protein_loss = protein_loss * data.conf_score[b]
 
             num_protein_tasks = y_pred.size(0)
             loss +=  protein_loss
@@ -340,7 +360,7 @@ def train(model, optimizer, epoch, loader):
     return res["loss"] / res["counter"]
 
 
-def val(model, epoch, loader, partition):
+def val(model, epoch, loader, partition, use_conf_score=True):
     model.eval()
 
     ce_loss = torch.nn.CrossEntropyLoss()
@@ -391,6 +411,8 @@ def val(model, epoch, loader, partition):
                 FN += torch.logical_and(preds != y, y != 2).sum()
 
                 protein_loss = ce_loss(y_pred, y)
+                if use_conf_score:
+                    protein_loss = protein_loss * data.conf_score[b]
                 # print(f"Protein loss: {protein_loss / y_pred.size(0)} for protein: {b}")
                 num_protein_tasks = y_pred.size(0)
                 loss += protein_loss #/ num_protein_tasks

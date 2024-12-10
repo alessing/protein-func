@@ -338,7 +338,7 @@ class RGAT(BasicGNN):
     supports_relation: Final[bool] = True
 
     def init_conv(self, in_channels: Union[int, Tuple[int, int]],
-                  out_channels: int, num_relations = 1,**kwargs) -> MessagePassing:
+                  out_channels: int, num_relations = 1, lora_dim=0, **kwargs) -> MessagePassing:
 
         v2 = kwargs.pop('v2', False)
         heads = kwargs.pop('heads', 1)
@@ -358,4 +358,4 @@ class RGAT(BasicGNN):
             out_channels = out_channels // heads
 
         return RGATConv(in_channels, out_channels, heads=heads, concat=concat,
-                    num_relations=num_relations, dropout=self.dropout.p, edge_dim=1, **kwargs)
+                    num_relations=num_relations, dropout=self.dropout.p, lora_rank=lora_dim, edge_dim=1, **kwargs)
