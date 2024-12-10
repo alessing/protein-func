@@ -71,6 +71,7 @@ class BasicGNN(torch.nn.Module):
     supports_edge_weight: Final[bool]
     supports_edge_attr: Final[bool]
     supports_norm_batch: Final[bool]
+    supports_relation: Final[bool]
 
     def __init__(
         self,
@@ -190,6 +191,7 @@ class BasicGNN(torch.nn.Module):
         batch_size: Optional[int] = None,
         num_sampled_nodes_per_hop: Optional[List[int]] = None,
         num_sampled_edges_per_hop: Optional[List[int]] = None,
+        edge_type: OptTensor = None,
     ) -> Tensor:
         r"""Forward pass.
 
@@ -221,6 +223,7 @@ class BasicGNN(torch.nn.Module):
                 Useful in :class:`~torch_geometric.loader.NeighborLoader`
                 scenarios to only operate on minimal-sized representations.
                 (default: :obj:`None`)
+            #TODO: edge_type
         """
         if (num_sampled_nodes_per_hop is not None
                 and isinstance(edge_weight, Tensor)
@@ -250,7 +253,9 @@ class BasicGNN(torch.nn.Module):
             # Tracing the module is not allowed with *args and **kwargs :(
             # As such, we rely on a static solution to pass optional edge
             # weights and edge attributes to the module.
-            if self.supports_edge_weight and self.supports_edge_attr:
+            if self.supports_relation:
+                x = conv(x, edge_index, edge_attr=edge_attr, edge_type=edge_type)
+            elif self.supports_edge_weight and self.supports_edge_attr:
                 x = conv(x, edge_index, edge_weight=edge_weight,
                          edge_attr=edge_attr)
             elif self.supports_edge_weight:
@@ -277,114 +282,6 @@ class BasicGNN(torch.nn.Module):
         x = self.lin(x) if hasattr(self, 'lin') else x
 
         return x
-
-    @torch.no_grad()
-    def inference_per_layer(
-        self,
-        layer: int,
-        x: Tensor,
-        edge_index: Adj,
-        batch_size: int,
-    ) -> Tensor:
-
-        x = self.convs[layer](x, edge_index)[:batch_size]
-
-        if layer == self.num_layers - 1 and self.jk_mode is None:
-            return x
-
-        if self.act is not None and self.act_first:
-            x = self.act(x)
-        if self.norms is not None:
-            x = self.norms[layer](x)
-        if self.act is not None and not self.act_first:
-            x = self.act(x)
-        if layer == self.num_layers - 1 and hasattr(self, 'lin'):
-            x = self.lin(x)
-
-        return x
-
-    @torch.no_grad()
-    def inference(
-        self,
-        loader: NeighborLoader,
-        device: Optional[Union[str, torch.device]] = None,
-        embedding_device: Union[str, torch.device] = 'cpu',
-        progress_bar: bool = False,
-        cache: bool = False,
-    ) -> Tensor:
-        r"""Performs layer-wise inference on large-graphs using a
-        :class:`~torch_geometric.loader.NeighborLoader`, where
-        :class:`~torch_geometric.loader.NeighborLoader` should sample the
-        full neighborhood for only one layer.
-        This is an efficient way to compute the output embeddings for all
-        nodes in the graph.
-        Only applicable in case :obj:`jk=None` or `jk='last'`.
-
-        Args:
-            loader (torch_geometric.loader.NeighborLoader): A neighbor loader
-                object that generates full 1-hop subgraphs, *i.e.*,
-                :obj:`loader.num_neighbors = [-1]`.
-            device (torch.device, optional): The device to run the GNN on.
-                (default: :obj:`None`)
-            embedding_device (torch.device, optional): The device to store
-                intermediate embeddings on. If intermediate embeddings fit on
-                GPU, this option helps to avoid unnecessary device transfers.
-                (default: :obj:`"cpu"`)
-            progress_bar (bool, optional): If set to :obj:`True`, will print a
-                progress bar during computation. (default: :obj:`False`)
-            cache (bool, optional): If set to :obj:`True`, caches intermediate
-                sampler outputs for usage in later epochs.
-                This will avoid repeated sampling to accelerate inference.
-                (default: :obj:`False`)
-        """
-        assert self.jk_mode is None or self.jk_mode == 'last'
-        assert isinstance(loader, NeighborLoader)
-        assert len(loader.dataset) == loader.data.num_nodes
-        assert len(loader.node_sampler.num_neighbors) == 1
-        assert not self.training
-        # assert not loader.shuffle  # TODO (matthias) does not work :(
-        if progress_bar:
-            pbar = tqdm(total=len(self.convs) * len(loader))
-            pbar.set_description('Inference')
-
-        x_all = loader.data.x.to(embedding_device)
-
-        if cache:
-
-            # Only cache necessary attributes:
-            def transform(data: Data) -> Data:
-                kwargs = dict(n_id=data.n_id, batch_size=data.batch_size)
-                if hasattr(data, 'adj_t'):
-                    kwargs['adj_t'] = data.adj_t
-                else:
-                    kwargs['edge_index'] = data.edge_index
-
-                return Data.from_dict(kwargs)
-
-            loader = CachedLoader(loader, device=device, transform=transform)
-
-        for i in range(self.num_layers):
-            xs: List[Tensor] = []
-            for batch in loader:
-                x = x_all[batch.n_id].to(device)
-                batch_size = batch.batch_size
-                if hasattr(batch, 'adj_t'):
-                    edge_index = batch.adj_t.to(device)
-                else:
-                    edge_index = batch.edge_index.to(device)
-
-                x = self.inference_per_layer(i, x, edge_index, batch_size)
-                xs.append(x.to(embedding_device))
-
-                if progress_bar:
-                    pbar.update(1)
-
-            x_all = torch.cat(xs, dim=0)
-
-        if progress_bar:
-            pbar.close()
-
-        return x_all
 
     def __repr__(self) -> str:
         return (f'{self.__class__.__name__}({self.in_channels}, '
@@ -438,9 +335,10 @@ class RGAT(BasicGNN):
     supports_edge_weight: Final[bool] = False
     supports_edge_attr: Final[bool] = True
     supports_norm_batch: Final[bool]
+    supports_relation: Final[bool] = True
 
     def init_conv(self, in_channels: Union[int, Tuple[int, int]],
-                  out_channels: int, **kwargs) -> MessagePassing:
+                  out_channels: int, num_relations = 1,**kwargs) -> MessagePassing:
 
         v2 = kwargs.pop('v2', False)
         heads = kwargs.pop('heads', 1)
@@ -459,6 +357,5 @@ class RGAT(BasicGNN):
         if concat:
             out_channels = out_channels // heads
 
-        Conv = GATConv if not v2 else GATv2Conv
-        return Conv(in_channels, out_channels, heads=heads, concat=concat,
-                    dropout=self.dropout.p, **kwargs)
+        return RGATConv(in_channels, out_channels, heads=heads, concat=concat,
+                    num_relations=num_relations, dropout=self.dropout.p, edge_dim=1, **kwargs)

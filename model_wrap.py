@@ -251,12 +251,13 @@ class FuncGNN(nn.Module):
                 num_layers=num_layers,
                 out_channels=hidden_dim,
                 dropout=dropout,
+                num_relations=16
             )
         else:
             raise Exception("Not implemented!")
 
         # self.softmax = nn.Softmax(dim=-1)
-        self.pooling = E3Pooling(feature_dim, edge_dim, hidden_dim)
+        self.pooling = E3Pooling(feature_dim, edge_dim, hidden_dim, model_type=model_type)
 
         # produces W[p, t] + b where p is the pooled message
         # self.mlp = nn.Linear(hidden_dim + task_embed_dim, num_classes)
@@ -273,7 +274,7 @@ class FuncGNN(nn.Module):
         # task embedding
         self.tasks_embed = nn.Embedding(num_tasks, task_embed_dim)
 
-    def forward(self, h, x, edge_index, edge_attr, batch, tasks_indices, batch_size):
+    def forward(self, h, x, edge_index, edge_attr, batch, tasks_indices, batch_size,edge_type):
         # Apply E(3)-equivariant layers
         if self.model_type == "egnn":
             for egnn in self.spatial_model:
@@ -287,7 +288,7 @@ class FuncGNN(nn.Module):
         elif self.model_type == "rgat":
             input = torch.cat((h, x), dim=-1)
             h = self.spatial_model(
-                x=input, edge_index=edge_index, batch=batch, batch_size=batch_size
+                x=input, edge_index=edge_index, batch=batch, batch_size=batch_size, edge_type=edge_type, edge_attr=edge_attr
             )
         else:
             raise Exception("Not implemented!")

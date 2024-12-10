@@ -114,7 +114,7 @@ def load_protein(prot_num, filename, edge_types, struct_feat_scaling=True, debug
             for i, edge_type in enumerate(edge_types.keys()):
                 edge_type = torch.Tensor(edge_type)
                 edge_mask = (edge_feats[1:3].T == edge_type).all(dim=1)
-                edge_feats[0, edge_mask] = i
+                edge_feats[0, edge_mask] = i + 1e-6
         edge_feats = edge_feats[[0, 3]]
 
 
@@ -129,7 +129,8 @@ def load_protein(prot_num, filename, edge_types, struct_feat_scaling=True, debug
             task_indices=task_index,
             labels=labels,
             pos=pos,
-            edge_attr=edge_feats.T,
+            edge_attr=edge_feats[1],
+            edge_type=edge_feats[0].long(),
             conf_score=conf_score,
         )
         return d

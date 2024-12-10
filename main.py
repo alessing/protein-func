@@ -283,8 +283,9 @@ def train(model, optimizer, epoch, loader):
         edge_index = data.edge_index.to(device)
         tasks_indices = data.task_indices.to(device)
         labels = data.labels.to(device)
-        edge_attr = None
+        edge_attr = data.edge_attr.to(device)
         batch = data.batch.to(device)
+        edge_type = data.edge_type.to(device)
         # batch_size = number of graphs (each graph represents a protein)
         batch_size = data.ptr.size(0) - 1
 
@@ -292,7 +293,7 @@ def train(model, optimizer, epoch, loader):
 
         # dictionary mapping b (protein idx) -> (num_tasks_for_protein_b, classes)
         y_pred_dict = model(
-            h, x, edge_index, edge_attr, batch, tasks_indices, batch_size
+            h, x, edge_index, edge_attr, batch, tasks_indices, batch_size, edge_type
         )
 
         loss = 0
@@ -361,16 +362,17 @@ def val(model, epoch, loader, partition):
             edge_index = data.edge_index
             tasks_indices = data.task_indices
             labels = data.labels
-            edge_attr = None
+            edge_attr = data.edge_attr
             batch = data.batch
             # batch_size = number of graphs (each graph represents a protein)
             batch_size = data.ptr.size(0) - 1
+            edge_type = data.edge_type.to(device)
 
             tasks_indices, labels = add_negative_samples(tasks_indices, labels)
 
             # dictionary mapping b (protein idx) -> (num_tasks_for_protein_b, classes)
             y_pred_dict = model(
-                h, x, edge_index, edge_attr, batch, tasks_indices, batch_size
+                h, x, edge_index, edge_attr, batch, tasks_indices, batch_size, edge_type
             )
 
             loss = 0
