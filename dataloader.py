@@ -91,7 +91,7 @@ def create_fake_dataloader(num_proteins=100, num_tasks=1000):
     return protein_datas, DataLoader(protein_datas, batch_size=4)
 
 
-def load_protein(prot_num, filename, edge_types, struct_feat_scaling='log', debug_mode=False):
+def load_protein(prot_num, filename, edge_types, struct_feat_scaling=True, debug_mode=False):
     with h5py.File(filename, "r") as f:
         pos = torch.tensor(f["pos"][:])
         atom_type = torch.tensor(f["atom_type"][:], dtype=torch.long)
@@ -100,7 +100,7 @@ def load_protein(prot_num, filename, edge_types, struct_feat_scaling='log', debu
         task_index = torch.tensor(f["task_index"][:], dtype=torch.long)
         labels = torch.tensor(f["labels"][:], dtype=torch.long)
         edge_feats = torch.tensor(f["edge_feats"]).float()
-        conf_score = torch.tensor(f["confidence_score"][0]).float() / 10
+        conf_score = torch.tensor(f["confidence_score"][0]).float() / 100.
 
         assert labels.shape == task_index.shape
         prot_num = torch.full_like(task_index, prot_num)
@@ -120,7 +120,7 @@ def load_protein(prot_num, filename, edge_types, struct_feat_scaling='log', debu
 
         if struct_feat_scaling:
             #structure_feats = torch.log(1 + structure_feats)
-            structure_feats = (1/5)*torch.max(structure_feats, 64) + torch.log(1 + structure_feats)
+            structure_feats = (1/5)*torch.minimum(structure_feats, torch.tensor(64)) + torch.log(1 + structure_feats)
 
         d = Data(
             edge_index=edge_index,
@@ -135,7 +135,7 @@ def load_protein(prot_num, filename, edge_types, struct_feat_scaling='log', debu
         return d
 
 
-def get_dataset(dataset_dir,struct_feat_scaling='log', debug_mode=False):
+def get_dataset(dataset_dir,struct_feat_scaling=True, debug_mode=False):
     dataset = []
 
     edge_types = {

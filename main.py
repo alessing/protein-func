@@ -39,14 +39,14 @@ parser.add_argument(
 parser.add_argument(
     "--batch_size",
     type=int,
-    default=1,
+    default=8,
     help="batch size",
 )
 
 parser.add_argument(
     "--num_layers",
     type=int,
-    default=2,
+    default=3,
     help="number of layers in spatial model",
 )
 
@@ -81,7 +81,7 @@ parser.add_argument(
 parser.add_argument(
     "--task_embed_dim",
     type=int,
-    default=128,
+    default=32,
     help="task embedding latent dimension",
 )
 
@@ -114,18 +114,11 @@ parser.add_argument(
     "--tensorboard", type=str_to_bool, default=False, help="Uses tensorboard"
 )
 
-parser.add_argument(
-    "--debug_mode",
-    action='store_true',
-    help="Makes all edges have the same relation type."
-)
-
 args = parser.parse_args()
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 loss_mse = nn.MSELoss()
 
-#DATASET_DIR = "data/processed_data/protein_inputs"
 DATASET_DIR = "data/processed_data/hdf5_files_d_10"
 # DATASET_DIR = "temp_proteins"
 
@@ -171,7 +164,6 @@ def main():
     num_classes = args.num_classes
     position_dim = args.position_dim
     model_type = args.model_type
-    debug_mode = args.debug_mode
 
     model = FuncGNN(
         num_layers,
@@ -185,7 +177,8 @@ def main():
         model_type=model_type,
     ).to(device)
 
-    protein_data, dl, edge_types = get_dataloader(DATASET_DIR, batch_size=batch_size, struct_feat_scaling=False, debug_mode=debug_mode)
+    #protein_data, dl = get_dataloader(DATASET_DIR, batch_size=batch_size)
+    protein_data, dl, edge_types = get_dataloader(DATASET_DIR, batch_size=batch_size, struct_feat_scaling=True)
     # protein_data, dl = create_fake_dataloader(num_proteins=1000, num_tasks=4598)
 
     train_data, temp_data = train_test_split(
@@ -322,16 +315,17 @@ def train(model, optimizer, epoch, loader):
             protein_loss = ce_loss(y_pred, y)
 
             num_protein_tasks = y_pred.size(0)
-            loss +=  protein_loss / num_protein_tasks
+            loss +=  protein_loss
 
         optimizer.zero_grad()
 
+        res["loss"] += loss.item()
         loss = loss/batch_size
-        print("l", loss.item())
+        print(loss.item())
         loss.backward()
         torch.nn.utils.clip_grad_norm_(model.parameters(), 0.5)
         optimizer.step()
-        res["loss"] += loss.item()
+        
         res["counter"] += batch_size
 
     F1 = TP / (TP + 0.5 * (FP + FN))
