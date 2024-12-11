@@ -244,7 +244,7 @@ def main():
     best_epoch = 0
 
     for epoch in range(0, args.epochs):
-        train_loss, train_f1, train_acc, train_precision, train_recall = train(model, optimizer, epoch, train_loader, use_conf_score=use_conf_score)
+        train_loss, train_f1, train_acc, train_precision, train_recall = train(model, optimizer, epoch, train_loader, feature_dim, use_conf_score=use_conf_score)
         if args.tensorboard:
             writer.add_scalar("Train/Loss", train_loss, epoch)
             writer.add_scalar("Train/F1", train_f1, epoch)
@@ -252,8 +252,8 @@ def main():
             writer.add_scalar("Train/Precision", train_precision, epoch)
             writer.add_scalar("Train/Recall", train_recall, epoch)
 
-        val_loss, val_f1, val_acc, val_precision, val_recall = val(model, epoch, val_loader, "val", use_conf_score=use_conf_score)
-        test_loss, test_f1, test_acc, test_precision, test_recall = val(model, epoch, test_loader, "test", use_conf_score=use_conf_score)
+        val_loss, val_f1, val_acc, val_precision, val_recall = val(model, epoch, val_loader, "val", feature_dim, use_conf_score=use_conf_score)
+        test_loss, test_f1, test_acc, test_precision, test_recall = val(model, epoch, test_loader, "test", feature_dim, use_conf_score=use_conf_score)
 
         if args.tensorboard:
             writer.add_scalar("Val/Loss", val_loss, epoch)
@@ -311,7 +311,7 @@ def add_negative_samples(task_indices, labels, num_tasks=4598):
     return task_indices, labels
 
 
-def train(model, optimizer, epoch, loader, use_conf_score=True):
+def train(model, optimizer, epoch, loader, feature_dim, use_conf_score=True):
     model.train()
 
     ce_loss = torch.nn.CrossEntropyLoss()
@@ -324,9 +324,12 @@ def train(model, optimizer, epoch, loader, use_conf_score=True):
     protein_losses = []
     for data in tqdm(loader):
         # features h = (atom_types, structure_features)
-        h = torch.cat(
-            (data.atom_types.view(-1, 1), data.structure_features), dim=-1
-        ).to(device)
+        if feature_dim != 1:
+            h = torch.cat(
+                (data.atom_types.view(-1, 1), data.structure_features), dim=-1
+            ).to(device)
+        else:
+            h = data.atom_types.view(-1, 1)
         x = data.pos.to(device)
         edge_index = data.edge_index.to(device)
         tasks_indices = data.task_indices.to(device)
@@ -384,7 +387,7 @@ def train(model, optimizer, epoch, loader, use_conf_score=True):
     return avg_protein_loss, F1, acc, precision, recall
 
 
-def val(model, epoch, loader, partition, use_conf_score=True):
+def val(model, epoch, loader, partition, feature_dim, use_conf_score=True):
     model.eval()
 
     ce_loss = torch.nn.CrossEntropyLoss()
@@ -399,9 +402,12 @@ def val(model, epoch, loader, partition, use_conf_score=True):
         for data in tqdm(loader):
             data = data.to(device)
             # features h = (atom_types, structure_features)
-            h = torch.cat(
-                (data.atom_types.view(-1, 1), data.structure_features), dim=-1
-            )
+            if feature_dim != 1:
+                h = torch.cat(
+                    (data.atom_types.view(-1, 1), data.structure_features), dim=-1
+                )
+            else:
+                h = data.atom_types.view(-1, 1)
             x = data.pos
             edge_index = data.edge_index
             tasks_indices = data.task_indices
