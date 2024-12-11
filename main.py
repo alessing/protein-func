@@ -329,7 +329,7 @@ def train(model, optimizer, epoch, loader, feature_dim, use_conf_score=True):
                 (data.atom_types.view(-1, 1), data.structure_features), dim=-1
             ).to(device)
         else:
-            h = data.atom_types.view(-1, 1).to(device)
+            h = data.atom_types.view(-1, 1).to(device, dtype=torch.float32)
         x = data.pos.to(device)
         edge_index = data.edge_index.to(device)
         tasks_indices = data.task_indices.to(device)
@@ -407,7 +407,7 @@ def val(model, epoch, loader, partition, feature_dim, use_conf_score=True):
                     (data.atom_types.view(-1, 1), data.structure_features), dim=-1
                 )
             else:
-                h = data.atom_types.view(-1, 1).to(device)
+                h = data.atom_types.view(-1, 1).to(device, dtype=torch.float32)
             x = data.pos
             edge_index = data.edge_index
             tasks_indices = data.task_indices
