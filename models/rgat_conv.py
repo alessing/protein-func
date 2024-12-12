@@ -426,7 +426,7 @@ class RGATConv(MessagePassing):
             a = torch.index_select(self.a, 0, edge_type)
             b = torch.index_select(self.b, 0, edge_type)
             outi = torch.bmm(torch.bmm(x_i.unsqueeze(1), a), b).squeeze(-2) + (x_i.unsqueeze(1) @ self.w_shared.unsqueeze(0)).squeeze(-2)
-            outj = torch.bmm(torch.bmm(x_i.unsqueeze(1), a), b).squeeze(-2) + (x_i.unsqueeze(1) @ self.w_shared.unsqueeze(0)).squeeze(-2)
+            outj = torch.bmm(torch.bmm(x_j.unsqueeze(1), a), b).squeeze(-2) + (x_j.unsqueeze(1) @ self.w_shared.unsqueeze(0)).squeeze(-2)
         else:  # No regularization/Basis-decomposition ========================
             if self.num_bases is None:
                 w = self.weight
