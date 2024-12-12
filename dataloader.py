@@ -90,8 +90,21 @@ def create_fake_dataloader(num_proteins=100, num_tasks=1000):
 
     return protein_datas, DataLoader(protein_datas, batch_size=4)
 
+atom_key = {5: 0, 6: 1, 7: 2, 15: 3}
+def create_one_hot_atom_embs(in_tensor):
+    keys = torch.tensor(list(atom_key.keys()))
+    values = torch.tensor(list(atom_key.values()))
 
-def load_protein(prot_num, filename, edge_types, struct_feat_scaling=True, debug_mode=False):
+    # Map the original tensor using indexing
+    new_ints = values[torch.searchsorted(keys, in_tensor)]
+
+    res = torch.nn.functional.one_hot(new_ints, num_classes=len(atom_key)).float()
+
+    return res
+
+
+
+def load_protein(prot_num, filename, edge_types, struct_feat_scaling=True, debug_mode=False, one_hot_atoms=True):
     with h5py.File(filename, "r") as f:
         pos = torch.tensor(f["pos"][:])
         atom_type = torch.tensor(f["atom_type"][:], dtype=torch.long)
@@ -101,6 +114,10 @@ def load_protein(prot_num, filename, edge_types, struct_feat_scaling=True, debug
         labels = torch.tensor(f["labels"][:], dtype=torch.long)
         edge_feats = torch.tensor(f["edge_feats"]).float()
         conf_score = torch.tensor(f["confidence_score"][0]).float() / 100.
+
+
+        atom_type = create_one_hot_atom_embs(atom_type)
+        
 
         assert labels.shape == task_index.shape
         prot_num = torch.full_like(task_index, prot_num)
@@ -160,6 +177,7 @@ def get_dataset(dataset_dir,struct_feat_scaling=True, debug_mode=False):
     for i, fname in tqdm(enumerate(glob.glob(os.path.join(dataset_dir, "*.hdf5")))):
         d = load_protein(i, fname, edge_types, struct_feat_scaling=struct_feat_scaling, debug_mode=debug_mode)
         dataset.append(d)
+        #if i > 20: break
 
     print(edge_types)
 

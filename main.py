@@ -53,7 +53,7 @@ parser.add_argument(
 parser.add_argument(
     "--feature_dim",
     type=int,
-    default=21,
+    default=24,
     help="feature dimension",
 )
 
@@ -88,7 +88,7 @@ parser.add_argument(
 parser.add_argument(
     "--task_embed_dim",
     type=int,
-    default=128,
+    default=256,
     help="task embedding latent dimension",
 )
 
@@ -120,6 +120,14 @@ parser.add_argument(
     help="Model type, either EGNN or GAT (default: egnn)",
 )
 
+
+parser.add_argument(
+    "--data_dir",
+    type=str,
+    default="data/processed_data/hdf5_files_d_20",
+    help="dataset directory to use",
+)
+
 parser.add_argument("--weight_decay", type=float, default=1e-6, help="weight decay")
 
 parser.add_argument("--lr", type=float, default=1e-4, help="learning rate")
@@ -140,10 +148,6 @@ args = parser.parse_args()
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 loss_mse = nn.MSELoss()
-
-#DATASET_DIR = "data/processed_data/hdf5_files_d_20"
-DATASET_DIR = "data/processed_data/hdf5_files_d_20"
-# DATASET_DIR = "temp_proteins"
 
 
 def create_summary_writer(lr, weight_decay, hidden_dim, num_layers, use_conf, num_blocks, lora_dim, feature_dim):
@@ -192,9 +196,10 @@ def main():
     lora_dim = args.lora_dim
     num_blocks = args.num_blocks
     num_blocks = None if num_blocks == 0 else num_blocks
+    dataset_dir = args.data_dir
 
     # Orthogonal methods
-    assert ((num_blocks == None) and (lora_dim > 0)) or ((num_blocks > 0) and (lora_dim == 0))
+    #assert ((num_blocks == None) and (lora_dim > 0)) or ((num_blocks > 0) and (lora_dim == 0))
 
     model = FuncGNN(
         num_layers,
@@ -210,7 +215,7 @@ def main():
     ).to(device)
 
     #protein_data, dl = get_dataloader(DATASET_DIR, batch_size=batch_size)
-    protein_data, dl, edge_types = get_dataloader(DATASET_DIR, batch_size=batch_size, struct_feat_scaling=True)
+    protein_data, dl, edge_types = get_dataloader(dataset_dir, batch_size=batch_size, struct_feat_scaling=True)
     # protein_data, dl = create_fake_dataloader(num_proteins=1000, num_tasks=4598)
 
     train_data, temp_data = train_test_split(
@@ -324,17 +329,17 @@ def train(model, optimizer, epoch, loader, feature_dim, use_conf_score=True):
     protein_losses = []
     for data in tqdm(loader):
         # features h = (atom_types, structure_features)
-        if feature_dim != 1:
+        if feature_dim != 4:
             h = torch.cat(
-                (data.atom_types.view(-1, 1), data.structure_features), dim=-1
+                (data.atom_types, data.structure_features), dim=-1
             ).to(device)
         else:
-            h = data.atom_types.view(-1, 1).to(device, dtype=torch.float32)
+            h = data.atom_types.to(device, dtype=torch.float32)
         x = data.pos.to(device)
         edge_index = data.edge_index.to(device)
         tasks_indices = data.task_indices.to(device)
         labels = data.labels.to(device)
-        edge_attr = None
+        edge_attr = data.edge_attr.to(device)
         batch = data.batch.to(device)
         edge_type = data.edge_type.to(device)
         # batch_size = number of graphs (each graph represents a protein)
@@ -402,18 +407,18 @@ def val(model, epoch, loader, partition, feature_dim, use_conf_score=True):
         for data in tqdm(loader):
             data = data.to(device)
             # features h = (atom_types, structure_features)
-            if feature_dim != 1:
+            if feature_dim != 4:
                 h = torch.cat(
-                    (data.atom_types.view(-1, 1), data.structure_features), dim=-1
+                    (data.atom_types, data.structure_features), dim=-1
                 )
             else:
-                h = data.atom_types.view(-1, 1).to(device, dtype=torch.float32)
+                h = data.atom_types.to(device, dtype=torch.float32)
             x = data.pos
             edge_index = data.edge_index
-            tasks_indices = data.task_indices
-            labels = data.labels
-            edge_attr = None
-            batch = data.batch
+            tasks_indices = data.task_indices.to(device)
+            labels = data.labels.to(device)
+            edge_attr = data.edge_attr.to(device)
+            batch = data.batch.to(device)
             edge_type = data.edge_type.to(device)
             # batch_size = number of graphs (each graph represents a protein)
             batch_size = data.ptr.size(0) - 1
