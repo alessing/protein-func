@@ -177,7 +177,7 @@ def get_dataset(dataset_dir,struct_feat_scaling=True, debug_mode=False):
     for i, fname in tqdm(enumerate(glob.glob(os.path.join(dataset_dir, "*.hdf5")))):
         d = load_protein(i, fname, edge_types, struct_feat_scaling=struct_feat_scaling, debug_mode=debug_mode)
         dataset.append(d)
-        #if i > 20: break
+        #if i > 2000: break
 
     print(edge_types)
 
