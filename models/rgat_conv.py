@@ -1,3 +1,5 @@
+# Code forked from https://github.com/pyg-team/pytorch_geometric/blob/master/torch_geometric/nn/conv/rgat_conv.py
+
 from typing import Optional
 
 import torch
