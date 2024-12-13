@@ -167,22 +167,32 @@ However, several smaller models outperformed the larger ones. There are several 
 - overfitting by larger models
 
 
-### Overfitting Issues
+### Potential Overfitting Issues
 
-Comparison of the best loss and F1 score achieved by each run on the train set and validation set reveal that overfitting is the likely clupret. For the larger models, train loss reaches much lower levels than val loss. The train F1s reach higher values than the val F1s. However, many of our initial hypotheses about what models could fit the data are shown to be correct. Ours and Ours (w/ d=30 structural features) shows the lowest train losses, suggesting these fit the data the best. However, there does not appear to be enough data to fit 
+Examination of the learning curves for the run with our method, a smaller model (ours with a hidden dimension of 128 instead of 256), and an even smaller model (ours with a hidden dimension of 128 instead of 256 and 8 layers instead of 16) seems to reveal that the larger model is overfitting. For the largest mode, after a few epochs of improvement, the loss and the F1 score continue to improve on the train set but start get worse on the validation set. For the smaller models, the validation metrics worsen less or continue improving throughout the whole training run.
+
+![overfitting](/blog/overfitting.png)
+![overfitting](/blog/overfitting_loss.png)
+
+While the worsening metrics on the validaion set seem to indicate a classic case of overfitting, a full examination of the loss and F1 score on the train and validation sets complicate the picture somewhat. The training loss reaches lower values for several of the smaller models with smaller hidden sizes or fewer hidden layers. While it does seem like many of the larger models are overfitting, it is hard to be certain without more experiments where we train many times longer to eliminate the possibility that the validation metrics for the bigger models will not start to improve (currently we are limited by compute) and where we train many more models systematically varying hyperparameters (again, limited by compute).
+
 
 
 ### Conf Score Smoothing
 
-Weighting terms of the loss by a protein-wise confidence score seems to have substantially smoothed out training. Comparing the validation loss curve for our method vs. the ablation with no confidence score weighting in the loss function reveals that weighting by confidence score smooths out the validation loss curve substantially, likely owing to the effective soft outlier rejection it introduces in the loss function. This suggests that, had it not been for the overfitting problems we ran into, this confidence score weighting may have been helpful.
+Weighting terms of the loss by a protein-wise confidence score seems to have substantially smoothed out training. Comparing the validation loss curve for our method vs. the ablation with no confidence score weighting in the loss function reveals that weighting by confidence score smooths out the validation loss curve substantially. This may owe to the effective soft masking of bad data by the confidence score weighting. This suggests that, had it not been for the overfitting problems we ran into, this confidence score weighting may have been helpful.
 
-#TODO: replace with nicer image
-![messy_loss](/blog/messy_loss.png)
+![messy_loss](/blog/conf_weighting.png)
+
+
+### Impact of Structure Features
+
+
 
 
 ## Conclusion
 
-Our design choices do help increase model expressivity per number of training parameters, as shown in the analysis of the train F1 and loss scores. Our conf score weighting also helped smooth the training process. However, due to the size of most of the models we ran being too large, these effects did not translate into better performance on held-out portions of the dataset (namely, proteins in the val set). However, these results do suggest that the design choices we made would be useful in a setting where we were not overfitting due to being limited by the size of the dataset. This suggests future work with (hopefully!) much larger protein datasets should consider the same or similar design choices to what we present here.
+Our design choices do help increase model expressivity per number of training parameters, as shown in the analysis of the train F1 and loss scores. Our conf score weighting also helped smooth the training process. However, due to the size of most of the models we ran being too large, these effects did not translate into better performance on held-out portions of the dataset (namely, proteins in the val set). However, these results do suggest that the design choices we made would be useful in a setting where we were not overfitting due to being limited by the size of the dataset. This suggests future work with (hopefully!) much larger protein datasets should consider the same or similar design choices to those we present here.
 
 
 ## References
