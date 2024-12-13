@@ -1,4 +1,9 @@
 ## Setup
+
+The GO Annotation dataset can be downloaded from this link: https://current.geneontology.org/products/pages/downloads.html. Download the Homo Sapien data.
+
+The AlphaFold v2 structure predictions can be downloaded from this link: https://alphafold.ebi.ac.uk/download#proteomes-section. Download the Homo Sapien data.
+
 To create the environment in which to run the model, run the following:
 
 `conda env create -f environment.yml`
