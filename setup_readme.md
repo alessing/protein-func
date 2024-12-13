@@ -4,7 +4,7 @@ To create the environment in which to run the model, run the following:
 
 `conda env create -f environment.yml`
 
-Then activate the environtment:
+Then activate the environment:
 
 `conda activate protein-func`
 
