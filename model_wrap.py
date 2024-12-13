@@ -4,6 +4,7 @@ from model.gcl import E_GCL, unsorted_segment_sum
 import torch
 from torch import nn
 from torch_geometric.nn import global_add_pool, global_mean_pool, GAT
+from models.rgat import RGAT
 
 
 class E_GCL_mask(E_GCL):
@@ -217,6 +218,7 @@ class FuncGNN(nn.Module):
         num_classes=3,
         dropout=0.1,
         model_type="egnn",
+        lora_dim=0
     ):
         super().__init__()
 
@@ -243,11 +245,21 @@ class FuncGNN(nn.Module):
                 out_channels=hidden_dim,
                 dropout=dropout,
             )
+        elif self.model_type == 'rgat':
+            self.spatial_model = RGAT(
+                in_channels=feature_dim + position_dim,
+                hidden_channels=hidden_dim,
+                num_layers=num_layers,
+                out_channels=hidden_dim,
+                dropout=dropout,
+                num_relations=16,
+                lora_dim=lora_dim
+            )
         else:
             raise Exception("Not implemented!")
 
         # self.softmax = nn.Softmax(dim=-1)
-        self.pooling = E3Pooling(feature_dim, edge_dim, hidden_dim)
+        self.pooling = E3Pooling(feature_dim, edge_dim, hidden_dim, model_type=model_type)
 
         # produces W[p, t] + b where p is the pooled message
         # self.mlp = nn.Linear(hidden_dim + task_embed_dim, num_classes)
@@ -264,7 +276,7 @@ class FuncGNN(nn.Module):
         # task embedding
         self.tasks_embed = nn.Embedding(num_tasks, task_embed_dim)
 
-    def forward(self, h, x, edge_index, edge_attr, batch, tasks_indices, batch_size):
+    def forward(self, h, x, edge_index, edge_attr, batch, tasks_indices, batch_size,edge_type):
         # Apply E(3)-equivariant layers
         if self.model_type == "egnn":
             for egnn in self.spatial_model:
@@ -274,6 +286,11 @@ class FuncGNN(nn.Module):
             input = torch.cat((h, x), dim=-1)
             h = self.spatial_model(
                 x=input, edge_index=edge_index, batch=batch, batch_size=batch_size
+            )
+        elif self.model_type == "rgat":
+            input = torch.cat((h, x), dim=-1)
+            h = self.spatial_model(
+                x=input, edge_index=edge_index, batch=batch, batch_size=batch_size, edge_type=edge_type, edge_attr=edge_attr
             )
         else:
             raise Exception("Not implemented!")

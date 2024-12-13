@@ -1,25 +1,37 @@
 # Protein Function Prediction using Multi-Task Graph Learning
 
-## Motivation & explanation of data/task (10 points)
+## Motivation
 
-Proteins are macromolecules present in all living things that carry out their core functions. Characterizing the structure and function of proteins has, thus, been a focus of biochemistry, with attempts at solving the problem of protein structure prediction, stretching back decades[1]. Recently, the Nobel Prize in chemistry was awarded for AlphaFold, which made massive advances in ML-based protein structure prediction[2]. However, prediction of protein function, such as  RNA binding and metal ion binding, remains an open challenge with substantial implications for biochemistry and medicine[3].
+Proteins are macromolecules present in all living things that carry out their core functions. Characterizing the structure and function of proteins has, thus, been a focus of biochemistry, with attempts at solving the problem of protein structure prediction, stretching back decades[1]. Recently, the Nobel Prize in chemistry was awarded for AlphaFold, which made massive advances in ML-based protein structure prediction[2]. However, prediction of protein function, such as  RNA binding and metal ion binding, remains an open challenge with substantial implications for biochemistry and medicine.
 
-Our goal in this project is to predict, from the structure of the protein, which functions held-out proteins will and will not enable or contribute to.
+Our goal in this project was to predict, from the structure of the protein, which functions held-out proteins will and will not enable or contribute to.
 
-The current state-of-the-art performance in protein function prediction is achieved by PhiGNet \cite{phignet}, which does not utilize structural predictions such as those from AlphaFold to create input graphs, but rather opts for forming graphs based on the Residue Communities (RCs) and Evolutionary Couples (ECs) found in protein sequences, and using ESM-1b \cite{Rives622803} for the embeddings of residues. PhiGNet achieved an average AUPR score of 0.80 and an Fmax value of 0.81 when predicting molecular functions from a dataset comprised of GO (Gene Ontology) function annotations. The authors criticized structural-based predictions, as structures predicted by neural networks are not always accurate. To compensate for this, we plan to weight examples in the training data by the confidence score assigned to the structure by AlphaFold.
+The current state-of-the-art performance in protein function prediction is achieved by PhiGNet [3], which does not utilize structural predictions such as those from AlphaFold to create input graphs. Instead, it opts for forming graphs based on the Residue Communities (RCs) and Evolutionary Couples (ECs) found in protein sequences, and uses ESM-1b [4] for the embeddings of residues. PhiGNet achieved an average AUPR score of 0.80 and an Fmax value of 0.81 when predicting molecular functions from a dataset comprised of GO (Gene Ontology) function annotations. The authors criticized structural-based predictions, as structures predicted by neural networks are not always accurate. To compensate for this, we weighted the protein examples in our training data by a confidence score. We calculated this confidence score by averaging the confidence score of each residue in the predicted AlphaFold v2 [2] structures. 
 
-We represent protein structures predicted by AlphaFold v2 \cite{alphafold} as graphs. Each atom is a node, and the distances between atoms and the atom types will define the edges.
+We represented these protein structures as graphs. Each atom was a node, and the distances between atoms and the atom types defined the edges.
 
-We will use the most recent Homo Sapien Gene Association File compiled by the GO Consortium as a dataset for associating protein functions to specific proteins. \cite{goa} Not all the functions associated with each human protein are known, but since individual proteins only have a small subset of all possible functions, we assume that a protein does not have a function if it is not known as having that function. There are about 1,000 protein functions in the dataset that we will classify, and there are approximately 20,000 known human proteins. As seen in Figure \ref{fig:power_law}, the number of functions in proteins exhibits a power law, whereby only a small number of proteins have a large number of functions.
+## Protein Function Data
 
-We first apply a filter to the Gene Association File, so that only associations regarding proteins and whether or not they enable/contribute to different functions remain. We also filter out duplicate rows that show the same relationship between a protein and a function as another row, but using different evidence. We then apply a "groupby" operation over protein UniProtKB IDs to get a dataset of all known functions of each known human protein.
+We used the most recent Homo Sapien Gene Association File compiled by the GO Consortium as a dataset for associating protein functions to specific proteins[5]. Not all the functions associated with each human protein are known, but since individual proteins only have a small subset of all possible functions, we assume that a protein does not have a function if it is not known as having that function. There are about 1,000 protein functions in the dataset that we will classify, and there are approximately 20,000 known human proteins. As seen in figures below, the number of functions in proteins exhibits a power law, whereby only a small number of proteins have a large number of functions.
 
-We match each protein UniProtKB ID in that dataset with its corresponding predicted AlphaFold structure. Using the structure, we define the graph of each protein. We are initially using a contact map to form edges between nodes, with atoms less than 3Å apart having an edge between them. For node features, we are considering cycles of up to 10.
+<table>
+<tr>
+    <td><img src="blog/power_law.png" width="450" alt="First image"></td>
+    <td><img src="blog/power_law_scaled.png" width="450" alt="Second image"></td>
+</tr>
+<tr>
+    <td>Histogram of Number of Protein Functions</td>
+    <td>Zoomed-in Histogram.</td>
+</tr>
+</table>
 
-We created a 80-10-10 train-val-test split in our dataset of $\sim$20,000 proteins. The model was trained on all available data for proteins within the training set (i.e. structure and all available protein function labels). The goal was to correctly predict which functions, held-out proteins in the val/test sets, a protein would enable, contribute to, or not enable/contribute to.
+We first applied a filter to the Gene Association File, so that only associations regarding proteins and whether or not they enable/contribute to different functions remained. We also filtered out duplicate rows that showed the same relationship between a protein and a function with different evidence. We then applied a "groupby" operation over protein UniProtKB IDs to get a dataset of all known functions of each known human protein.
 
-Since our dataset primarily contains "enables" labels (rather than contributes to/not enables) and most proteins do not enable nor contribute to most protein functions, we augmented each training batch with randomly chosen functions that we labeled as ``not enabled" by the associated protein. We added an equal number of negative samples for each protein in a batch as there were positive samples. We created negative samples the same way when evaluating on the validation set.
+We then matched each protein UniProtKB ID in that dataset with its corresponding predicted AlphaFold structure. Using the structure, we defined the graph of each protein. We used a contact map to form edges between nodes, with atoms less than 3Å apart having an edge between them. For node features, we concatenated atom type with cycles of up to 10, 20, or 30. How many cycles were used for node features was a tunable hyperparameter.
 
+We created a 80-10-10 train-val-test split in our dataset of 18,483 proteins. The model was trained on all available data for proteins within the training set (i.e. structure and all available protein function labels). For held-out proteins in the val/test sets, the goal was to correctly predict the functions each would enable, contribute to, or not enable/contribute to.
+
+Since our dataset primarily contained "enables" labels (rather than contributes to/not enables) and most proteins do not enable nor contribute to most protein functions, we augmented each training batch with randomly chosen functions that we labeled as "not enabled" by the associated protein. We added an equal number of negative samples for each protein in a batch as there were positive samples. We created negative samples the same way when evaluating on the validation set.
 
 ## Appropriateness & explanation of model(s) (10 points)
 
@@ -136,8 +148,14 @@ We used early-stopping to prevent model over-fitting. More precisely, we early-s
 ## Code snippets (10 points)
 
 ## References
-[1] \citep{1973_protein_folding}
+[1] Christian B. Anfinsen. Principles that govern the folding of protein chains. Science, 181(4096):223–230, 1973.
 
-[2] \citep{alphafold}
+[2] John Jumper, Richard Evans, Alexander Pritzel, Tim Green, Michael Figurnov, Olaf Ronneberger, Kathryn Tunyasuvunakool, Russ Bates, Augustin Žídek, Anna Potapenko, Alex Bridgland, Clemens Meyer, Simon A A Kohl, Andrew J Ballard, Andrew Cowie, Bernardino Romera-Paredes, Stanislav Nikolov, Rishub Jain, Jonas Adler, Trevor Back, Stig Petersen, David Reiman, Ellen Clancy, Michal Zielinski, Martin Steinegger, Michalina Pacholska, Tamas Berghammer, Sebastian Bodenstein, David Silver, Oriol Vinyals, Andrew W Senior, Koray Kavukcuoglu, Pushmeet Kohli, and Demis Hassabis. Highly accurate protein structure prediction with AlphaFold. Nature, 596(7873):583–589, August 2021. PMID: 34265844.
 
-[3] \citep{jang-2024}
+[3] Yaan J. Jang, Qi-Qi Qin, Si-Yu Huang, Arun T. John Peter, Xue-Ming Ding, and Benoît Kornmann. Accurate prediction of protein function using statistics-informed graph networks. Nature Communications, 15(1):6601, 2024.
+
+[4] Alexander Rives, Siddharth Goyal, Joshua Meier, Demi Guo, Myle Ott, C. Lawrence Zitnick,
+Jerry Ma, and Rob Fergus. Biological structure and function emerge from scaling unsupervised
+learning to 250 million protein sequences. bioRxiv, 2019.
+
+[5] Homo Sapien EBI Gene Ontology Annotation Protein Database, 2024-09-08.

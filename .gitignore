@@ -6,4 +6,6 @@ data/processed_data/*
 __pycache__
 data/test_dataset/*
 runs/*
+model_checkpoints/*
 best_models/*
+.vscode

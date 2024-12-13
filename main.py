@@ -10,7 +10,7 @@ from torch.utils.tensorboard import SummaryWriter
 import datetime
 import os
 
-from models import FuncGNN
+from model_wrap import FuncGNN
 
 torch.manual_seed(42)
 
@@ -32,7 +32,7 @@ def str_to_bool(value):
 parser.add_argument(
     "--epochs",
     type=int,
-    default=100,
+    default=200,
     help="number of epochs to train (default: 10)",
 )
 
@@ -46,28 +46,28 @@ parser.add_argument(
 parser.add_argument(
     "--num_layers",
     type=int,
-    default=2,
+    default=16,
     help="number of layers in spatial model",
 )
 
 parser.add_argument(
     "--feature_dim",
     type=int,
-    default=11,
+    default=24,
     help="feature dimension",
 )
 
 parser.add_argument(
     "--edge_dim",
     type=int,
-    default=0,
+    default=1,
     help="edge feature dimension",
 )
 
 parser.add_argument(
     "--hidden_dim",
     type=int,
-    default=16,
+    default=256,
     help="hidden dimension",
 )
 
@@ -79,9 +79,16 @@ parser.add_argument(
 )
 
 parser.add_argument(
+    "--num_blocks",
+    type=int,
+    default=0,
+    help="Number of blocks for GATConv",
+)
+
+parser.add_argument(
     "--task_embed_dim",
     type=int,
-    default=128,
+    default=256,
     help="task embedding latent dimension",
 )
 
@@ -90,6 +97,13 @@ parser.add_argument(
     type=int,
     default=4598,
     help="number of tasks",
+)
+
+parser.add_argument(
+    "--lora_dim",
+    type=int,
+    default=8,
+    help="lora low rank dim. When 0 turns off lora",
 )
 
 parser.add_argument(
@@ -102,8 +116,16 @@ parser.add_argument(
 parser.add_argument(
     "--model_type",
     type=str,
-    default="egnn",
+    default="rgat",
     help="Model type, either EGNN or GAT (default: egnn)",
+)
+
+
+parser.add_argument(
+    "--data_dir",
+    type=str,
+    default="data/processed_data/hdf5_files_d_20",
+    help="dataset directory to use",
 )
 
 parser.add_argument("--weight_decay", type=float, default=1e-6, help="weight decay")
@@ -111,13 +133,15 @@ parser.add_argument("--weight_decay", type=float, default=1e-6, help="weight dec
 parser.add_argument("--lr", type=float, default=1e-4, help="learning rate")
 
 parser.add_argument(
-    "--tensorboard", type=str_to_bool, default=False, help="Uses tensorboard"
+    "--tensorboard", type=str_to_bool, default=True, help="Uses tensorboard"
 )
 
+
 parser.add_argument(
-    "--debug_mode",
-    action='store_true',
-    help="Makes all edges have the same relation type."
+    "--use_conf_score",
+    default=True,
+    type=str_to_bool,
+    help='Whether to use conf score weighting in loss func'
 )
 
 args = parser.parse_args()
@@ -125,14 +149,11 @@ args = parser.parse_args()
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 loss_mse = nn.MSELoss()
 
-#DATASET_DIR = "data/processed_data/protein_inputs"
-DATASET_DIR = "data/processed_data/hdf5_files_d_10"
-# DATASET_DIR = "temp_proteins"
 
-
-def create_summary_writer(lr, weight_decay, hidden_size, num_equivariant_layers):
+def create_summary_writer(lr, weight_decay, hidden_dim, num_layers, use_conf, num_blocks, lora_dim, feature_dim):
+    os.makedirs("runs", exist_ok=True)
     dt = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
-    log_dir = f"./runs/{dt}_funcgnn_lr_{lr}_wd_{weight_decay}_hid_size_{hidden_size}_num_equi_layers_{num_equivariant_layers}/"
+    log_dir = f"./runs/{dt}_funcgnn_lr_{lr}_wd_{weight_decay}_hid_size_{hidden_dim}_num_layers_{num_layers}_conf_{use_conf}_nb_{num_blocks}_lora_{lora_dim}_fdim_{feature_dim}/"
 
     writer = SummaryWriter(log_dir)
     return writer
@@ -171,7 +192,14 @@ def main():
     num_classes = args.num_classes
     position_dim = args.position_dim
     model_type = args.model_type
-    debug_mode = args.debug_mode
+    use_conf_score= args.use_conf_score
+    lora_dim = args.lora_dim
+    num_blocks = args.num_blocks
+    num_blocks = None if num_blocks == 0 else num_blocks
+    dataset_dir = args.data_dir
+
+    # Orthogonal methods
+    #assert ((num_blocks == None) and (lora_dim > 0)) or ((num_blocks > 0) and (lora_dim == 0))
 
     model = FuncGNN(
         num_layers,
@@ -183,9 +211,11 @@ def main():
         position_dim,
         num_classes,
         model_type=model_type,
+        lora_dim=lora_dim
     ).to(device)
 
-    protein_data, dl, edge_types = get_dataloader(DATASET_DIR, batch_size=batch_size, struct_feat_scaling=False, debug_mode=debug_mode)
+    #protein_data, dl = get_dataloader(DATASET_DIR, batch_size=batch_size)
+    protein_data, dl, edge_types = get_dataloader(dataset_dir, batch_size=batch_size, struct_feat_scaling=True)
     # protein_data, dl = create_fake_dataloader(num_proteins=1000, num_tasks=4598)
 
     train_data, temp_data = train_test_split(
@@ -207,7 +237,8 @@ def main():
     optimizer = optim.Adam(model.parameters(), lr=lr, weight_decay=weight_decay)
 
     if args.tensorboard:
-        writer = create_summary_writer(lr, weight_decay, hidden_dim, num_layers)
+        writer = create_summary_writer(lr, weight_decay, hidden_dim, num_layers, use_conf_score, num_blocks, lora_dim, feature_dim)
+        
 
     # # early stopping
     early_stopper = EarlyStopper(patience=10, min_delta=0.005)
@@ -218,16 +249,30 @@ def main():
     best_epoch = 0
 
     for epoch in range(0, args.epochs):
-        train_loss = train(model, optimizer, epoch, train_loader)
+        train_loss, train_f1, train_acc, train_precision, train_recall = train(model, optimizer, epoch, train_loader, feature_dim, use_conf_score=use_conf_score)
         if args.tensorboard:
-            writer.add_scalar("Loss/train", train_loss, epoch)
+            writer.add_scalar("Train/Loss", train_loss, epoch)
+            writer.add_scalar("Train/F1", train_f1, epoch)
+            writer.add_scalar("Train/Acc", train_acc, epoch)
+            writer.add_scalar("Train/Precision", train_precision, epoch)
+            writer.add_scalar("Train/Recall", train_recall, epoch)
 
-        val_loss = val(model, epoch, val_loader, "val")
-        test_loss = val(model, epoch, test_loader, "test")
+        val_loss, val_f1, val_acc, val_precision, val_recall = val(model, epoch, val_loader, "val", feature_dim, use_conf_score=use_conf_score)
+        test_loss, test_f1, test_acc, test_precision, test_recall = val(model, epoch, test_loader, "test", feature_dim, use_conf_score=use_conf_score)
 
         if args.tensorboard:
-            writer.add_scalar("Loss/val", val_loss, epoch)
-            writer.add_scalar("Loss/test", test_loss, epoch)
+            writer.add_scalar("Val/Loss", val_loss, epoch)
+            writer.add_scalar("Val/F1", val_f1, epoch)
+            writer.add_scalar("Val/Acc", val_acc, epoch)
+            writer.add_scalar("Val/Precision", val_precision, epoch)
+            writer.add_scalar("Val/Recall", val_recall, epoch)
+
+            writer.add_scalar("Test/loss", test_loss, epoch)
+            writer.add_scalar("Test/F1", test_f1, epoch)
+            writer.add_scalar("Test/Acc", test_acc, epoch)
+            writer.add_scalar("Test/Precision", test_precision, epoch)
+            writer.add_scalar("Test/Recall", test_recall, epoch)
+
 
         results["epochs"].append(epoch)
         results["losess"].append(test_loss)
@@ -236,22 +281,23 @@ def main():
             best_test_loss = test_loss
             best_train_loss = train_loss
             best_epoch = epoch
-            # save model
-            os.makedirs("best_models", exist_ok=True)
 
-            torch.save(
-                model.state_dict(),
-                f"best_models/funcgnn.pt",
-            )
+        # save model
+        os.makedirs(f"model_checkpoints/funcgnn_lr_{lr}_wd_{weight_decay}_hid_size_{hidden_dim}_num_layers_{num_layers}_conf_{use_conf_score}_nb_{num_blocks}_lora_{lora_dim}_fdim_{feature_dim}", exist_ok=True)
+
+        torch.save(
+            model.state_dict(),
+            f"model_checkpoints/funcgnn_lr_{lr}_wd_{weight_decay}_hid_size_{hidden_dim}_num_layers_{num_layers}_conf_{use_conf_score}_nb_{num_blocks}_lora_{lora_dim}_fdim_{feature_dim}/epoch_{epoch}.pt",
+        )
 
         print(
             "*** Best Train Loss: %.5f \t Best Val Loss: %.5f \t Best Test Loss: %.5f \t Best epoch %d"
             % (best_train_loss, best_val_loss, best_test_loss, best_epoch)
         )
 
-        if early_stopper.early_stop(val_loss):
-            print(f"EARLY STOPPED")
-            break
+        # if early_stopper.early_stop(val_loss):
+        #     print(f"EARLY STOPPED")
+        #     break
 
     return best_train_loss, best_val_loss, best_test_loss, best_epoch, total_params
 
@@ -270,28 +316,32 @@ def add_negative_samples(task_indices, labels, num_tasks=4598):
     return task_indices, labels
 
 
-def train(model, optimizer, epoch, loader):
+def train(model, optimizer, epoch, loader, feature_dim, use_conf_score=True):
     model.train()
 
     ce_loss = torch.nn.CrossEntropyLoss()
-    res = {"epoch": epoch, "loss": 0, "counter": 0}
 
     TP = 0
     TN = 0
     FP = 0
     FN = 0
 
+    protein_losses = []
     for data in tqdm(loader):
         # features h = (atom_types, structure_features)
-        h = torch.cat(
-            (data.atom_types.view(-1, 1), data.structure_features), dim=-1
-        ).to(device)
+        if feature_dim != 4:
+            h = torch.cat(
+                (data.atom_types, data.structure_features), dim=-1
+            ).to(device)
+        else:
+            h = data.atom_types.to(device, dtype=torch.float32)
         x = data.pos.to(device)
         edge_index = data.edge_index.to(device)
         tasks_indices = data.task_indices.to(device)
         labels = data.labels.to(device)
-        edge_attr = None
+        edge_attr = data.edge_attr.to(device)
         batch = data.batch.to(device)
+        edge_type = data.edge_type.to(device)
         # batch_size = number of graphs (each graph represents a protein)
         batch_size = data.ptr.size(0) - 1
 
@@ -299,13 +349,12 @@ def train(model, optimizer, epoch, loader):
 
         # dictionary mapping b (protein idx) -> (num_tasks_for_protein_b, classes)
         y_pred_dict = model(
-            h, x, edge_index, edge_attr, batch, tasks_indices, batch_size
+            h, x, edge_index, edge_attr, batch, tasks_indices, batch_size, edge_type
         )
 
         loss = 0
         protein_idxs = tasks_indices[:, 0]
         unique_protein_idxs = torch.unique(protein_idxs)
-        valid_loss = False
         for b in range(batch_size):
             protein_idx = unique_protein_idxs[b]
             mask = protein_idxs == protein_idx
@@ -318,58 +367,59 @@ def train(model, optimizer, epoch, loader):
             FP += torch.logical_and(preds != y, y == 2).sum()
             FN += torch.logical_and(preds != y, y != 2).sum()
 
-            #print(y_pred)
             protein_loss = ce_loss(y_pred, y)
-
-            num_protein_tasks = y_pred.size(0)
-            loss +=  protein_loss / num_protein_tasks
-
+            if use_conf_score:
+                protein_loss = protein_loss * data.conf_score[b]
+            loss += protein_loss
+            protein_losses.append(protein_loss.item())
+        
         optimizer.zero_grad()
-
-        loss = loss/batch_size
-        print("l", loss.item())
         loss.backward()
         torch.nn.utils.clip_grad_norm_(model.parameters(), 0.5)
         optimizer.step()
-        res["loss"] += loss.item()
-        res["counter"] += batch_size
+    
+    avg_protein_loss = sum(protein_losses) / len(protein_losses)
 
     F1 = TP / (TP + 0.5 * (FP + FN))
     acc = (TP + TN) / (TP + TN + FP + FN)
-    precision = TP / (TP + FP)
+    precision = TP / (TP + FP) if TP + FP else 0
     recall = TP / (TP + FN)
     print(
-        "%s epoch %d avg loss: %.5f, f1 score: %.5f, acc: %.5f, precision: %.5f, recall: %.5f"
-        % ("train", epoch, res["loss"] / res["counter"], F1, acc, precision, recall)
+        "%s epoch %d avg protein loss: %.5f, f1 score: %.5f, acc: %.5f, precision: %.5f, recall: %.5f"
+        % ("train", epoch, avg_protein_loss, F1, acc, precision, recall)
     )
 
-    return res["loss"] / res["counter"]
+    return avg_protein_loss, F1, acc, precision, recall
 
 
-def val(model, epoch, loader, partition):
+def val(model, epoch, loader, partition, feature_dim, use_conf_score=True):
     model.eval()
 
     ce_loss = torch.nn.CrossEntropyLoss()
-    res = {"epoch": epoch, "loss": 0, "counter": 0}
 
     TP = 0
     TN = 0
     FP = 0
     FN = 0
 
+    protein_losses = []
     with torch.no_grad():
         for data in tqdm(loader):
             data = data.to(device)
             # features h = (atom_types, structure_features)
-            h = torch.cat(
-                (data.atom_types.view(-1, 1), data.structure_features), dim=-1
-            )
+            if feature_dim != 4:
+                h = torch.cat(
+                    (data.atom_types, data.structure_features), dim=-1
+                )
+            else:
+                h = data.atom_types.to(device, dtype=torch.float32)
             x = data.pos
             edge_index = data.edge_index
-            tasks_indices = data.task_indices
-            labels = data.labels
-            edge_attr = None
-            batch = data.batch
+            tasks_indices = data.task_indices.to(device)
+            labels = data.labels.to(device)
+            edge_attr = data.edge_attr.to(device)
+            batch = data.batch.to(device)
+            edge_type = data.edge_type.to(device)
             # batch_size = number of graphs (each graph represents a protein)
             batch_size = data.ptr.size(0) - 1
 
@@ -377,10 +427,9 @@ def val(model, epoch, loader, partition):
 
             # dictionary mapping b (protein idx) -> (num_tasks_for_protein_b, classes)
             y_pred_dict = model(
-                h, x, edge_index, edge_attr, batch, tasks_indices, batch_size
+                h, x, edge_index, edge_attr, batch, tasks_indices, batch_size, edge_type
             )
 
-            loss = 0
             protein_idxs = tasks_indices[:, 0]
             unique_protein_idxs = torch.unique(protein_idxs)
             for b in range(batch_size):
@@ -396,23 +445,22 @@ def val(model, epoch, loader, partition):
                 FN += torch.logical_and(preds != y, y != 2).sum()
 
                 protein_loss = ce_loss(y_pred, y)
-                # print(f"Protein loss: {protein_loss / y_pred.size(0)} for protein: {b}")
-                num_protein_tasks = y_pred.size(0)
-                loss += protein_loss #/ num_protein_tasks
+                if use_conf_score:
+                    protein_loss = protein_loss * data.conf_score[b]
+                protein_losses.append(protein_loss.item())
 
-            res["loss"] += loss.item()
-            res["counter"] += batch_size
+    avg_protein_loss = sum(protein_losses) / len(protein_losses)
 
     F1 = TP / (TP + 0.5 * (FP + FN))
     acc = (TP + TN) / (TP + TN + FP + FN)
-    precision = TP / (TP + FP)
+    precision = TP / (TP + FP) if TP + FP else 0
     recall = TP / (TP + FN)
     print(
-        "%s epoch %d avg loss: %.5f, f1 score: %.5f, acc: %.5f, precision: %.5f, recall: %.5f"
-        % (partition, epoch, res["loss"] / res["counter"], F1, acc, precision, recall)
+        "%s epoch %d avg protein loss: %.5f, f1 score: %.5f, acc: %.5f, precision: %.5f, recall: %.5f"
+        % (partition, epoch, avg_protein_loss, F1, acc, precision, recall)
     )
 
-    return res["loss"] / res["counter"]
+    return avg_protein_loss, F1, acc, precision, recall
 
 
 if __name__ == "__main__":

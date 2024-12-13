@@ -91,7 +91,7 @@ def save_hdf5(filepath, protein_funcs, parser, D):
         f.create_dataset('pos', data=pos.cpu().numpy())
         f.create_dataset('atom_type', data=atom_type)
         f.create_dataset('confidence_score', data=[confidence_score])
-        f.create_dataset('adj_feats', data=adj_node_feats.cpu().numpy())  # TODO: rename to adj_node_feats?
+        f.create_dataset('adj_feats', data=adj_node_feats.cpu().numpy())
         f.create_dataset('edge_feats', data=edge_feats)
         f.create_dataset('edge_index', data=edge_index)
         f.create_dataset('task_index', data=task_index)

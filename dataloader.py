@@ -90,8 +90,21 @@ def create_fake_dataloader(num_proteins=100, num_tasks=1000):
 
     return protein_datas, DataLoader(protein_datas, batch_size=4)
 
+atom_key = {5: 0, 6: 1, 7: 2, 15: 3}
+def create_one_hot_atom_embs(in_tensor):
+    keys = torch.tensor(list(atom_key.keys()))
+    values = torch.tensor(list(atom_key.values()))
 
-def load_protein(prot_num, filename, edge_types, struct_feat_scaling='log', debug_mode=False):
+    # Map the original tensor using indexing
+    new_ints = values[torch.searchsorted(keys, in_tensor)]
+
+    res = torch.nn.functional.one_hot(new_ints, num_classes=len(atom_key)).float()
+
+    return res
+
+
+
+def load_protein(prot_num, filename, edge_types, struct_feat_scaling=True, debug_mode=False, one_hot_atoms=True):
     with h5py.File(filename, "r") as f:
         pos = torch.tensor(f["pos"][:])
         atom_type = torch.tensor(f["atom_type"][:], dtype=torch.long)
@@ -100,7 +113,11 @@ def load_protein(prot_num, filename, edge_types, struct_feat_scaling='log', debu
         task_index = torch.tensor(f["task_index"][:], dtype=torch.long)
         labels = torch.tensor(f["labels"][:], dtype=torch.long)
         edge_feats = torch.tensor(f["edge_feats"]).float()
-        conf_score = torch.tensor(f["confidence_score"][0]).float() / 10
+        conf_score = torch.tensor(f["confidence_score"][0]).float() / 100.
+
+
+        atom_type = create_one_hot_atom_embs(atom_type)
+        
 
         assert labels.shape == task_index.shape
         prot_num = torch.full_like(task_index, prot_num)
@@ -114,13 +131,13 @@ def load_protein(prot_num, filename, edge_types, struct_feat_scaling='log', debu
             for i, edge_type in enumerate(edge_types.keys()):
                 edge_type = torch.Tensor(edge_type)
                 edge_mask = (edge_feats[1:3].T == edge_type).all(dim=1)
-                edge_feats[0, edge_mask] = i
+                edge_feats[0, edge_mask] = i + 1e-6
         edge_feats = edge_feats[[0, 3]]
 
 
         if struct_feat_scaling:
             #structure_feats = torch.log(1 + structure_feats)
-            structure_feats = (1/5)*torch.max(structure_feats, 64) + torch.log(1 + structure_feats)
+            structure_feats = (1/5)*torch.minimum(structure_feats, torch.tensor(64)) + torch.log(1 + structure_feats)
 
         d = Data(
             edge_index=edge_index,
@@ -129,13 +146,14 @@ def load_protein(prot_num, filename, edge_types, struct_feat_scaling='log', debu
             task_indices=task_index,
             labels=labels,
             pos=pos,
-            edge_attr=edge_feats.T,
+            edge_attr=edge_feats[1],
+            edge_type=edge_feats[0].long(),
             conf_score=conf_score,
         )
         return d
 
 
-def get_dataset(dataset_dir,struct_feat_scaling='log', debug_mode=False):
+def get_dataset(dataset_dir,struct_feat_scaling=True, debug_mode=False):
     dataset = []
 
     edge_types = {
@@ -157,9 +175,9 @@ def get_dataset(dataset_dir,struct_feat_scaling='log', debug_mode=False):
         (15, 15): 15,
     }
     for i, fname in tqdm(enumerate(glob.glob(os.path.join(dataset_dir, "*.hdf5")))):
-        print("Loading", fname)
         d = load_protein(i, fname, edge_types, struct_feat_scaling=struct_feat_scaling, debug_mode=debug_mode)
         dataset.append(d)
+        #if i > 2000: break
 
     print(edge_types)
 
