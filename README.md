@@ -135,17 +135,55 @@ Furthermore, for each protein, we perform a $3$-way classification, conditioned 
 
 where $\mathbf{t}^{(b)}=\text{Embed}(t^{(b)})\in\R^{E}$ is the task embedding corresponding to task index $t^{(i)}$, $\mathbf{p}^{(b)}=f_{\theta}(X^{(b)}, H^{(b)})$ is the embedding for protein $b$ with coordinates $X^{(b)}\in\R^{N\times 3}$ and features $H^{(b)}\in\R^{N\times (K+1)}$, and $g_{\phi}:\R^{E}\times \R^{D}\to[0,1]^3$ is an MLP with a softmax applied to its logits. That is, $g_{\phi}(\textbf{t}^{(b)}, \textbf{p}^{(b)})\in[0,1]^3$ gives the discrete probability distribution that the protein $b$ contributes to, enables, or does not enable/contribute to protein function $t^{(b)}$.
 
-## Insights + results (10 points)
+## Experiments and Results
 
 The primary metric used is an F1 score. The F1 score was computed with respect to three classes: (1) contributes, (2) enables, or (3) does not contribute to/enable a function. In particular, we treated the \textit{not enables} class as the negative class, while both \textit{contributes to} and \textit{enables} are treated as the positive class. The metric is computed according to true positives (TP), false positives (FP) and false negatives (FN) as follows:
 \begin{equation}
     F_1=\frac{TP}{TP + \frac{1}{2}(FP + FN)}.
 \end{equation}
 
-We used early-stopping to prevent model over-fitting. More precisely, we early-stopped once the cross entropy loss started to increase on our validation set.
+On both the train and val sets, for each protein we create predictions on a set of functions including all those functions the protein actually does enable or contribute to as well as an equal number of randomly sampled functions the proteins does not contribute to. The F1 score is computed on the predictions made for each of these tasks on each protein. (TODO: could include discussion of different ways of making negative samples for F1)
 
-## Figures (10 points)
-## Code snippets (10 points)
+
+We ran our method with d=20 dimensional structural features and a 16 layer LoRA-Relational GAT with a hidden layer size of 256. Our method also used a LoRA rank of 16 and each term of the the loss function were weighted according to the per-protein Alphafold confidence scores described above. In addition, we ran several ablations, to get the following list of runs:
+
+- Our method
+- A (non-relational) GAT with the same hyperparameters as our method (with no LoRA since there are no relation types)
+- Our method, with no Alphafold confidence score weighting
+- Our method, with d=30 dimensional structural features
+- Our method, with d=10 dimensional structural features
+- Our method, with no structural features
+- A (non-relational) GAT with hidden dimension 512
+
+For each run, we chose a "best epoch" checkpoint as the epoch with maximum F1 score on the validation set. Using this method for checkpoint selection, the full results are summarized here:
+
+![val_res](/blog/val_full_table.png)
+
+From this, we conclude that the different models of the full size (16 layers, 256 dimensional hidden size) do not show substantially different results, with the run with ten dimensional structure features showing marginally better performance than the GAT baseline and the baseline with no structural features. Further, we find that weighting loss terms with Alphafold confidence scores made little impact on the full size models.
+
+However, several smaller models outperformed the larger ones. There are several plausible explainations from this:
+- instability when training the deeper networks
+- undertrained models (with smaller models learning faster, thus achieving stronger results in a limited timeframe)
+- overfitting by larger models
+
+
+### Overfitting Issues
+
+Comparison of the best loss and F1 score achieved by each run on the train set and validation set reveal that overfitting is the likely clupret. For the larger models, train loss reaches much lower levels than val loss. The train F1s reach higher values than the val F1s. However, many of our initial hypotheses about what models could fit the data are shown to be correct. Ours and Ours (w/ d=30 structural features) shows the lowest train losses, suggesting these fit the data the best. However, there does not appear to be enough data to fit 
+
+
+### Conf Score Smoothing
+
+Weighting terms of the loss by a protein-wise confidence score seems to have substantially smoothed out training. Comparing the validation loss curve for our method vs. the ablation with no confidence score weighting in the loss function reveals that weighting by confidence score smooths out the validation loss curve substantially, likely owing to the effective soft outlier rejection it introduces in the loss function. This suggests that, had it not been for the overfitting problems we ran into, this confidence score weighting may have been helpful.
+
+#TODO: replace with nicer image
+![messy_loss](/blog/messy_loss.png)
+
+
+## Conclusion
+
+Our design choices do help increase model expressivity per number of training parameters, as shown in the analysis of the train F1 and loss scores. Our conf score weighting also helped smooth the training process. However, due to the size of most of the models we ran being too large, these effects did not translate into better performance on held-out portions of the dataset (namely, proteins in the val set). However, these results do suggest that the design choices we made would be useful in a setting where we were not overfitting due to being limited by the size of the dataset. This suggests future work with (hopefully!) much larger protein datasets should consider the same or similar design choices to what we present here.
+
 
 ## References
 [1] Christian B. Anfinsen. Principles that govern the folding of protein chains. Science, 181(4096):223–230, 1973.

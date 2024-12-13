@@ -9,3 +9,4 @@ runs/*
 model_checkpoints/*
 best_models/*
 .vscode
+analysis.ipynb
