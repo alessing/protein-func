@@ -1,8 +1,6 @@
-# Written by: https://github.com/vgsatorras/egnn/blob/main/models/gcl.py
-
+# Taken from: https://github.com/vgsatorras/egnn/blob/main/models/gcl.py
 from torch import nn
 import torch
-
 
 class MLP(nn.Module):
     """a simple 4-layer MLP"""

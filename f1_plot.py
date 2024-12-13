@@ -7,7 +7,6 @@ def extract_f1_scores(file_path):
     patterns = {
         'train': r'train epoch \d+ .*?f1 score: (\d*\.?\d*)',
         'val': r'val epoch \d+ .*?f1 score: (\d*\.?\d*)',
-        # 'test': r'test epoch \d+ .*?f1 score: (\d*\.?\d*)'
     }
     
     scores = defaultdict(list)
@@ -28,7 +27,6 @@ def make_plots(data):
     epochs = range(1, len(data['train']) + 1)
     plt.plot(epochs, data['train'], 'b-', label='Train', linewidth=2)
     plt.plot(epochs, data['val'], 'r-', label='Validation', linewidth=2)
-    # plt.plot(epochs, data['test'], 'g-', label='Test', linewidth=2)
 
     plt.title('F1 Scores', fontsize=14, pad=15)
     plt.xlabel('Epoch', fontsize=12)

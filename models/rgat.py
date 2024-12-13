@@ -357,5 +357,15 @@ class RGAT(BasicGNN):
         if concat:
             out_channels = out_channels // heads
 
-        return RGATConv(in_channels, out_channels, heads=heads, concat=concat,
-                    num_relations=num_relations, dropout=self.dropout.p, lora_rank=lora_dim, edge_dim=1, **kwargs)
+        # Initialize RGATConv with LoRA capabilities
+        return RGATConv(
+            in_channels, 
+            out_channels, 
+            heads=heads, 
+            concat=concat,
+            num_relations=num_relations, 
+            dropout=self.dropout.p, 
+            lora_rank=lora_dim, # LoRA rank parameter
+            edge_dim=1, 
+            **kwargs
+        )

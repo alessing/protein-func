@@ -1,14 +1,14 @@
-# Written by: https://github.com/vgsatorras/egnn/blob/main/qm9/models.py
-
 from model.gcl import E_GCL, unsorted_segment_sum
 import torch
 from torch import nn
 from torch_geometric.nn import global_add_pool, global_mean_pool, GAT
 from models.rgat import RGAT
 
-
+# E_GCL_mask class extends E_GCL to include a mask for coordinates
 class E_GCL_mask(E_GCL):
     """Graph Neural Net with global state and fixed number of nodes per graph.
+    Written by: https://github.com/vgsatorras/egnn/blob/main/qm9/models.py
+
     Args:
           hidden_dim: Number of hidden units.
           num_nodes: Maximum number of nodes (for self-attentive pooling).
@@ -29,6 +29,24 @@ class E_GCL_mask(E_GCL):
         attention=False,
         pooling=False,
     ):
+        """
+        Forward pass for the E_GCL_mask layer.
+
+        Args:
+            h (Tensor): Node features.
+            edge_index (Tensor): Edge indices.
+            coord (Tensor): Node coordinates.
+            node_mask (Tensor): Node masks.
+            edge_mask (Tensor): Edge masks.
+            edge_attr (Tensor, optional): Edge attributes.
+            node_attr (Tensor, optional): Node attributes.
+            n_nodes (int, optional): Number of nodes.
+            batch (Tensor, optional): Batch indices.
+
+        Returns:
+            Tuple[Tensor, Tensor, Tensor]: Updated node features, coordinates, and edge attributes.
+        """
+        # Initialize the parent class E_GCL
         E_GCL.__init__(
             self,
             input_nf,
@@ -43,13 +61,17 @@ class E_GCL_mask(E_GCL):
             pooling=pooling,
         )
 
+        # Remove the coordinate MLP from the parent class
         del self.coord_mlp
         self.act_fn = act_fn
 
     def coord_model(self, coord, edge_index, coord_diff, edge_feat, edge_mask):
+        # Calculate the transformation for coordinates
         row, col = edge_index
         trans = coord_diff * self.coord_mlp(edge_feat) * edge_mask
+        # Aggregate the transformations
         agg = unsorted_segment_sum(trans, row, num_segments=coord.size(0))
+        # Update coordinates with the aggregated transformations
         coord += agg * self.coords_weight
         return coord
 
@@ -65,22 +87,38 @@ class E_GCL_mask(E_GCL):
         n_nodes=None,
         batch=None,
     ):
+        # Compute radial and coordinate differences
         row, col = edge_index
         radial, coord_diff = self.coord2radial(edge_index, coord)
 
+        # Compute edge features
         edge_feat = self.edge_model(h[row], h[col], radial, edge_attr)
 
+        # Apply edge mask to edge features
         edge_feat = edge_feat * edge_mask
 
-        # TO DO: edge_feat = edge_feat * edge_mask
-
-        # coord = self.coord_model(coord, edge_index, coord_diff, edge_feat, edge_mask)
+        # Update node features
         h, agg = self.node_model(h, edge_index, edge_feat, node_attr)
 
         return h, coord, edge_attr
 
-
+# EGNN class defines an E(3)-equivariant graph neural network
 class EGNN(nn.Module):
+    """
+    Defines an E(3)-equivariant graph neural network, which maintains equivariance
+    to 3D rotations and translations.
+
+    Attributes:
+        in_node_nf (int): Number of input node features.
+        in_edge_nf (int): Number of input edge features.
+        hidden_nf (int): Number of hidden units.
+        device (str): Device to run the model on ('cpu' or 'cuda').
+        act_fn (nn.Module): Activation function.
+        n_layers (int): Number of layers in the network.
+        coords_weight (float): Weight for coordinate updates.
+        attention (bool): Whether to use attention mechanism.
+        node_attr (int): Whether to use node attributes.
+    """
     def __init__(
         self,
         in_node_nf,
@@ -98,13 +136,15 @@ class EGNN(nn.Module):
         self.device = device
         self.n_layers = n_layers
 
-        ### Encoder
+        # Encoder: Linear layer to embed node features
         self.embedding = nn.Linear(in_node_nf, hidden_nf)
         self.node_attr = node_attr
         if node_attr:
             n_node_attr = in_node_nf
         else:
             n_node_attr = 0
+
+        # Add E_GCL layers
         for i in range(0, n_layers):
             self.add_module(
                 "gcl_%d" % i,
@@ -121,12 +161,14 @@ class EGNN(nn.Module):
                 ),
             )
 
+        # Node decoder
         self.node_dec = nn.Sequential(
             nn.Linear(self.hidden_nf, self.hidden_nf),
             act_fn,
             nn.Linear(self.hidden_nf, self.hidden_nf),
         )
 
+        # Graph decoder
         self.graph_dec = nn.Sequential(
             nn.Linear(self.hidden_nf, self.hidden_nf),
             act_fn,
@@ -135,7 +177,21 @@ class EGNN(nn.Module):
         self.to(self.device)
 
     def forward(self, h0, x, edge_index, edge_attr):
+        """
+        Forward pass for the EGNN model.
+
+        Args:
+            h0 (Tensor): Initial node features.
+            x (Tensor): Node coordinates.
+            edge_index (Tensor): Edge indices.
+            edge_attr (Tensor): Edge attributes.
+
+        Returns:
+            Tuple[Tensor, Tensor]: Updated node features and coordinates.
+        """
+        # Embed initial node features
         h = self.embedding(h0)
+        # Pass through E_GCL layers
         for i in range(0, self.n_layers):
             if self.node_attr:
                 h, x, _ = self._modules["gcl_%d" % i](
@@ -156,8 +212,22 @@ class EGNN(nn.Module):
 
         return h, x
 
-
+# E3Pooling class for pooling operations in E(3)-equivariant networks
 class E3Pooling(nn.Module):
+    """
+    Implements pooling operations for E(3)-equivariant networks, allowing for
+    aggregation of node features in a graph.
+
+    Attributes:
+        in_node_nf (int): Number of input node features.
+        in_edge_nf (int): Number of input edge features.
+        hidden_nf (int): Number of hidden units.
+        act_fn (nn.Module): Activation function.
+        coords_weight (float): Weight for coordinate updates.
+        attention (bool): Whether to use attention mechanism.
+        node_attr (int): Whether to use node attributes.
+        model_type (str): Type of model ('egnn' or others).
+    """
     def __init__(
         self,
         in_node_nf,
@@ -178,6 +248,7 @@ class E3Pooling(nn.Module):
 
         self.model_type = model_type
 
+        # Initialize E_GCL backbone if model type is 'egnn'
         if self.model_type == "egnn":
             self.e3_backbone = E_GCL(
                 self.hidden_dim,
@@ -192,20 +263,52 @@ class E3Pooling(nn.Module):
                 pooling=True,
             )
 
+        # Use global mean pooling
         self.pool = global_mean_pool
 
     def forward(self, h, batch, edge_index=None, x=None, edge_attr=None):
+        """
+        Forward pass for the E3Pooling layer.
+
+        Args:
+            h (Tensor): Node features.
+            batch (Tensor): Batch indices.
+            edge_index (Tensor, optional): Edge indices.
+            x (Tensor, optional): Node coordinates.
+            edge_attr (Tensor, optional): Edge attributes.
+
+        Returns:
+            Tensor: Pooled node features.
+        """
+        # Apply E_GCL backbone if model type is 'egnn'
         if self.model_type == "egnn":
             h = self.e3_backbone(h, edge_index, x, edge_attr=edge_attr)
 
+        # Pool the node features
         # If h is (B, N, d), take the mean across atoms
-        # p = h.mean(dim=1)
         p = self.pool(h, batch)
 
         return p
 
-
+# FuncGNN class for functional graph neural networks
 class FuncGNN(nn.Module):
+    """
+    Defines functional graph neural network (FuncE GNN) for multi-task learning, capable of
+    handling different types of graph neural network architectures.
+
+    Attributes:
+        num_layers (int): Number of layers in the network.
+        feature_dim (int): Dimension of node features.
+        edge_dim (int): Dimension of edge features.
+        hidden_dim (int): Number of hidden units.
+        task_embed_dim (int): Dimension of task embeddings.
+        num_tasks (int): Number of tasks.
+        position_dim (int): Dimension of position features.
+        num_classes (int): Number of output classes.
+        dropout (float): Dropout rate.
+        model_type (str): Type of model ('egnn', 'gat', 'rgat').
+        lora_dim (int): Dimension for LoRA (Low-Rank Adaptation).
+    """
     def __init__(
         self,
         num_layers,
@@ -226,6 +329,7 @@ class FuncGNN(nn.Module):
         self.C = num_classes
         self.model_type = model_type
 
+        # Initialize spatial model based on model type
         if self.model_type == "egnn":
             spatial_layers = [
                 EGNN(in_node_nf=feature_dim, in_edge_nf=edge_dim, hidden_nf=hidden_dim)
@@ -258,11 +362,10 @@ class FuncGNN(nn.Module):
         else:
             raise Exception("Not implemented!")
 
-        # self.softmax = nn.Softmax(dim=-1)
+       # Initialize pooling layer
         self.pooling = E3Pooling(feature_dim, edge_dim, hidden_dim, model_type=model_type)
 
-        # produces W[p, t] + b where p is the pooled message
-        # self.mlp = nn.Linear(hidden_dim + task_embed_dim, num_classes)
+        # MLP for final prediction
         self.mlp = nn.Sequential(
             nn.Linear(hidden_dim + task_embed_dim, hidden_dim),
             nn.ReLU(),
@@ -273,10 +376,26 @@ class FuncGNN(nn.Module):
             nn.Linear(hidden_dim, num_classes),
         )
 
-        # task embedding
+        # Task embedding layer
         self.tasks_embed = nn.Embedding(num_tasks, task_embed_dim)
 
     def forward(self, h, x, edge_index, edge_attr, batch, tasks_indices, batch_size,edge_type):
+        """
+        Forward pass for the FuncGNN model.
+
+        Args:
+            h (Tensor): Node features.
+            x (Tensor): Node coordinates.
+            edge_index (Tensor): Edge indices.
+            edge_attr (Tensor): Edge attributes.
+            batch (Tensor): Batch indices.
+            tasks_indices (Tensor): Task indices.
+            batch_size (int): Batch size.
+            edge_type (Tensor): Edge types.
+
+        Returns:
+            Dict[int, Tensor]: Predictions for each protein in the batch.
+        """
         # Apply E(3)-equivariant layers
         if self.model_type == "egnn":
             for egnn in self.spatial_model:
@@ -295,14 +414,15 @@ class FuncGNN(nn.Module):
         else:
             raise Exception("Not implemented!")
 
-        # Apply E(3)-invariant pooling layer to get pooled message
-        # Shape (B, hidden_dim) or (B, 64)
+        # Apply E(3)-invariant pooling layer to get pooled message of shape (B, hidden_dim)
         p = self.pooling(h, batch, edge_index=edge_index, x=x, edge_attr=edge_attr)
 
+        # Extract task indices and unique protein indices
         protein_idxs = tasks_indices[:, 0]
         unique_protein_idxs = torch.unique(protein_idxs)
         task_idxs = tasks_indices[:, 1]
 
+        # Prepare output dictionary
         # maps protein idx b ->pred[b] (prediction for protein b)
         out = {}
         for b in range(batch_size):

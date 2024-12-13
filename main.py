@@ -12,15 +12,15 @@ import os
 
 from model_wrap import FuncGNN
 
+# Set a manual seed for reproducibility
 torch.manual_seed(42)
 
+# Argument parser for command line options
 parser = argparse.ArgumentParser(
-    description="Protein Function Prediction with E(3)-Equivariant GNNs and Multi-task Learning"
+    description="FuncE GNN: Protein Function Prediction using Multi-Task and Relational Graph Learning"
 )
 
-# NUM_TASKS = 4598
-
-
+# Function to convert string arguments to boolean
 def str_to_bool(value):
     if value.lower() in {"false", "f", "0", "no", "n"}:
         return False
@@ -28,7 +28,7 @@ def str_to_bool(value):
         return True
     raise ValueError(f"{value} is not a valid boolean value")
 
-
+# Add command line arguments
 parser.add_argument(
     "--epochs",
     type=int,
@@ -120,7 +120,6 @@ parser.add_argument(
     help="Model type, either EGNN or GAT (default: egnn)",
 )
 
-
 parser.add_argument(
     "--data_dir",
     type=str,
@@ -144,13 +143,33 @@ parser.add_argument(
     help='Whether to use conf score weighting in loss func'
 )
 
+# Parse the arguments
 args = parser.parse_args()
 
+# Set the device to GPU if available, otherwise CPU
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+# Define a mean squared error loss function
 loss_mse = nn.MSELoss()
 
-
+# Function to create a summary writer for TensorBoard
 def create_summary_writer(lr, weight_decay, hidden_dim, num_layers, use_conf, num_blocks, lora_dim, feature_dim):
+    """
+    Create a TensorBoard summary writer.
+
+    Args:
+        lr (float): Learning rate.
+        weight_decay (float): Weight decay.
+        hidden_dim (int): Hidden dimension size.
+        num_layers (int): Number of layers.
+        use_conf (bool): Whether to use confidence score.
+        num_blocks (int): Number of blocks.
+        lora_dim (int): Lora dimension.
+        feature_dim (int): Feature dimension.
+
+    Returns:
+        SummaryWriter: The TensorBoard summary writer.
+    """
     os.makedirs("runs", exist_ok=True)
     dt = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
     log_dir = f"./runs/{dt}_funcgnn_lr_{lr}_wd_{weight_decay}_hid_size_{hidden_dim}_num_layers_{num_layers}_conf_{use_conf}_nb_{num_blocks}_lora_{lora_dim}_fdim_{feature_dim}/"
@@ -158,8 +177,15 @@ def create_summary_writer(lr, weight_decay, hidden_dim, num_layers, use_conf, nu
     writer = SummaryWriter(log_dir)
     return writer
 
-
+# Class for early stopping during training
 class EarlyStopper:
+    """
+    Class to handle early stopping during training.
+
+    Attributes:
+        patience (int): Number of epochs to wait before stopping.
+        min_delta (float): Minimum change in validation loss to qualify as an improvement.
+    """
     def __init__(self, patience=1, min_delta=0):
         self.patience = patience
         self.min_delta = min_delta
@@ -169,6 +195,15 @@ class EarlyStopper:
         self.last_validation_loss = float("inf")
 
     def early_stop(self, validation_loss):
+        """
+        Determine whether to stop training early.
+
+        Args:
+            validation_loss (float): The current validation loss.
+
+        Returns:
+            bool: True if training should stop, False otherwise.
+        """
         if validation_loss < self.min_validation_loss:
             self.min_validation_loss = validation_loss
             self.counter = 0
@@ -180,8 +215,12 @@ class EarlyStopper:
 
         return False
 
-
+# Main function to train and evaluate the model
 def main():
+    """
+    Main function to train and evaluate the FuncGNN model.
+    """
+    # Extract arguments
     batch_size = args.batch_size
     num_layers = args.num_layers
     feature_dim = args.feature_dim
@@ -198,9 +237,7 @@ def main():
     num_blocks = None if num_blocks == 0 else num_blocks
     dataset_dir = args.data_dir
 
-    # Orthogonal methods
-    #assert ((num_blocks == None) and (lora_dim > 0)) or ((num_blocks > 0) and (lora_dim == 0))
-
+    # Initialize the model
     model = FuncGNN(
         num_layers,
         feature_dim,
@@ -214,33 +251,34 @@ def main():
         lora_dim=lora_dim
     ).to(device)
 
-    #protein_data, dl = get_dataloader(DATASET_DIR, batch_size=batch_size)
+    # Load the dataset
     protein_data, dl, edge_types = get_dataloader(dataset_dir, batch_size=batch_size, struct_feat_scaling=True)
-    # protein_data, dl = create_fake_dataloader(num_proteins=1000, num_tasks=4598)
 
+    # Split the data into training, validation, and test sets
     train_data, temp_data = train_test_split(
         protein_data, test_size=0.2, random_state=42
     )
     val_data, test_data = train_test_split(temp_data, test_size=0.5, random_state=42)
 
-    # Step 2: Create DataLoader objects for each subset
+    # Create DataLoader objects for each subset
     train_loader = DataLoader(train_data, batch_size=batch_size, shuffle=True)
     val_loader = DataLoader(val_data, batch_size=batch_size, shuffle=False)
     test_loader = DataLoader(test_data, batch_size=batch_size, shuffle=False)
 
+    # Calculate the total number of parameters in the model
     total_params = sum(p.numel() for p in model.parameters())
     print(f"total params: {total_params}")
 
+    # Set up the optimizer
     weight_decay = args.weight_decay
     lr = args.lr
-
     optimizer = optim.Adam(model.parameters(), lr=lr, weight_decay=weight_decay)
 
+    # Set up TensorBoard writer if enabled
     if args.tensorboard:
         writer = create_summary_writer(lr, weight_decay, hidden_dim, num_layers, use_conf_score, num_blocks, lora_dim, feature_dim)
         
-
-    # # early stopping
+    # Initialize early stopping
     early_stopper = EarlyStopper(patience=10, min_delta=0.005)
     results = {"epochs": [], "losess": []}
     best_val_loss = float("inf")
@@ -248,8 +286,12 @@ def main():
     best_train_loss = float("inf")
     best_epoch = 0
 
+    # Training loop
     for epoch in range(0, args.epochs):
+        # Train the model
         train_loss, train_f1, train_acc, train_precision, train_recall = train(model, optimizer, epoch, train_loader, feature_dim, use_conf_score=use_conf_score)
+        
+        # Log training metrics to TensorBoard
         if args.tensorboard:
             writer.add_scalar("Train/Loss", train_loss, epoch)
             writer.add_scalar("Train/F1", train_f1, epoch)
@@ -257,9 +299,11 @@ def main():
             writer.add_scalar("Train/Precision", train_precision, epoch)
             writer.add_scalar("Train/Recall", train_recall, epoch)
 
+        # Validate the model
         val_loss, val_f1, val_acc, val_precision, val_recall = val(model, epoch, val_loader, "val", feature_dim, use_conf_score=use_conf_score)
         test_loss, test_f1, test_acc, test_precision, test_recall = val(model, epoch, test_loader, "test", feature_dim, use_conf_score=use_conf_score)
 
+        # Log validation and test metrics to TensorBoard
         if args.tensorboard:
             writer.add_scalar("Val/Loss", val_loss, epoch)
             writer.add_scalar("Val/F1", val_f1, epoch)
@@ -273,7 +317,7 @@ def main():
             writer.add_scalar("Test/Precision", test_precision, epoch)
             writer.add_scalar("Test/Recall", test_recall, epoch)
 
-
+        # Update results and check for best validation loss
         results["epochs"].append(epoch)
         results["losess"].append(test_loss)
         if val_loss < best_val_loss:
@@ -282,7 +326,7 @@ def main():
             best_train_loss = train_loss
             best_epoch = epoch
 
-        # save model
+        # Save the model checkpoint
         os.makedirs(f"model_checkpoints/funcgnn_lr_{lr}_wd_{weight_decay}_hid_size_{hidden_dim}_num_layers_{num_layers}_conf_{use_conf_score}_nb_{num_blocks}_lora_{lora_dim}_fdim_{feature_dim}", exist_ok=True)
 
         torch.save(
@@ -290,19 +334,32 @@ def main():
             f"model_checkpoints/funcgnn_lr_{lr}_wd_{weight_decay}_hid_size_{hidden_dim}_num_layers_{num_layers}_conf_{use_conf_score}_nb_{num_blocks}_lora_{lora_dim}_fdim_{feature_dim}/epoch_{epoch}.pt",
         )
 
+        # Print the best losses and epoch
         print(
             "*** Best Train Loss: %.5f \t Best Val Loss: %.5f \t Best Test Loss: %.5f \t Best epoch %d"
             % (best_train_loss, best_val_loss, best_test_loss, best_epoch)
         )
 
+        # Check for early stopping
         # if early_stopper.early_stop(val_loss):
         #     print(f"EARLY STOPPED")
         #     break
 
     return best_train_loss, best_val_loss, best_test_loss, best_epoch, total_params
 
-
+# Function to add negative samples to the dataset
 def add_negative_samples(task_indices, labels, num_tasks=4598):
+    """
+    Add negative samples to the dataset.
+
+    Args:
+        task_indices (Tensor): The task indices.
+        labels (Tensor): The labels.
+        num_tasks (int): The number of tasks.
+
+    Returns:
+        Tuple[Tensor, Tensor]: The updated task indices and labels.
+    """
     new_task_indices = task_indices.clone()
     new_labels = labels.clone()
     new_labels[:, 1] = 2
@@ -315,12 +372,28 @@ def add_negative_samples(task_indices, labels, num_tasks=4598):
 
     return task_indices, labels
 
-
+# Training function
 def train(model, optimizer, epoch, loader, feature_dim, use_conf_score=True):
-    model.train()
+    """
+    Train the model for one epoch.
 
+    Args:
+        model (nn.Module): The model to train.
+        optimizer (Optimizer): The optimizer.
+        epoch (int): The current epoch.
+        loader (DataLoader): The data loader.
+        feature_dim (int): The feature dimension.
+        use_conf_score (bool): Whether to use confidence score.
+
+    Returns:
+        Tuple[float, float, float, float, float]: The average loss, F1 score, accuracy, precision, and recall.
+    """
+    
+    model.train()
+    # Define the loss function
     ce_loss = torch.nn.CrossEntropyLoss()
 
+    # Initialize metrics
     TP = 0
     TN = 0
     FP = 0
@@ -328,7 +401,7 @@ def train(model, optimizer, epoch, loader, feature_dim, use_conf_score=True):
 
     protein_losses = []
     for data in tqdm(loader):
-        # features h = (atom_types, structure_features)
+        # Prepare input features
         if feature_dim != 4:
             h = torch.cat(
                 (data.atom_types, data.structure_features), dim=-1
@@ -342,16 +415,18 @@ def train(model, optimizer, epoch, loader, feature_dim, use_conf_score=True):
         edge_attr = data.edge_attr.to(device)
         batch = data.batch.to(device)
         edge_type = data.edge_type.to(device)
-        # batch_size = number of graphs (each graph represents a protein)
         batch_size = data.ptr.size(0) - 1
 
+        # Add negative samples
         tasks_indices, labels = add_negative_samples(tasks_indices, labels)
 
+        # Forward pass
         # dictionary mapping b (protein idx) -> (num_tasks_for_protein_b, classes)
         y_pred_dict = model(
             h, x, edge_index, edge_attr, batch, tasks_indices, batch_size, edge_type
         )
 
+        # Calculate loss and update metrics
         loss = 0
         protein_idxs = tasks_indices[:, 0]
         unique_protein_idxs = torch.unique(protein_idxs)
@@ -373,13 +448,14 @@ def train(model, optimizer, epoch, loader, feature_dim, use_conf_score=True):
             loss += protein_loss
             protein_losses.append(protein_loss.item())
         
+        # Backward pass and optimization
         optimizer.zero_grad()
         loss.backward()
         torch.nn.utils.clip_grad_norm_(model.parameters(), 0.5)
         optimizer.step()
     
+    # Calculate average loss and other metrics
     avg_protein_loss = sum(protein_losses) / len(protein_losses)
-
     F1 = TP / (TP + 0.5 * (FP + FN))
     acc = (TP + TN) / (TP + TN + FP + FN)
     precision = TP / (TP + FP) if TP + FP else 0
@@ -391,12 +467,28 @@ def train(model, optimizer, epoch, loader, feature_dim, use_conf_score=True):
 
     return avg_protein_loss, F1, acc, precision, recall
 
-
+# Validation function
 def val(model, epoch, loader, partition, feature_dim, use_conf_score=True):
-    model.eval()
+    """
+    Validate the model.
 
+    Args:
+        model (nn.Module): The model to validate.
+        epoch (int): The current epoch.
+        loader (DataLoader): The data loader.
+        partition (str): The data partition (e.g., "val" or "test").
+        feature_dim (int): The feature dimension.
+        use_conf_score (bool): Whether to use confidence score.
+
+    Returns:
+        Tuple[float, float, float, float, float]: The average loss, F1 score, accuracy, precision, and recall.
+    """
+
+    model.eval()
+    # Define the loss function
     ce_loss = torch.nn.CrossEntropyLoss()
 
+    # Initialize metrics
     TP = 0
     TN = 0
     FP = 0
@@ -406,7 +498,7 @@ def val(model, epoch, loader, partition, feature_dim, use_conf_score=True):
     with torch.no_grad():
         for data in tqdm(loader):
             data = data.to(device)
-            # features h = (atom_types, structure_features)
+            # Prepare input features
             if feature_dim != 4:
                 h = torch.cat(
                     (data.atom_types, data.structure_features), dim=-1
@@ -420,16 +512,18 @@ def val(model, epoch, loader, partition, feature_dim, use_conf_score=True):
             edge_attr = data.edge_attr.to(device)
             batch = data.batch.to(device)
             edge_type = data.edge_type.to(device)
-            # batch_size = number of graphs (each graph represents a protein)
             batch_size = data.ptr.size(0) - 1
 
+            # Add negative samples
             tasks_indices, labels = add_negative_samples(tasks_indices, labels)
 
+            # Forward pass
             # dictionary mapping b (protein idx) -> (num_tasks_for_protein_b, classes)
             y_pred_dict = model(
                 h, x, edge_index, edge_attr, batch, tasks_indices, batch_size, edge_type
             )
 
+            # Calculate loss and update metrics
             protein_idxs = tasks_indices[:, 0]
             unique_protein_idxs = torch.unique(protein_idxs)
             for b in range(batch_size):
@@ -449,8 +543,8 @@ def val(model, epoch, loader, partition, feature_dim, use_conf_score=True):
                     protein_loss = protein_loss * data.conf_score[b]
                 protein_losses.append(protein_loss.item())
 
+    # Calculate average loss and other metrics
     avg_protein_loss = sum(protein_losses) / len(protein_losses)
-
     F1 = TP / (TP + 0.5 * (FP + FN))
     acc = (TP + TN) / (TP + TN + FP + FN)
     precision = TP / (TP + FP) if TP + FP else 0
@@ -462,6 +556,6 @@ def val(model, epoch, loader, partition, feature_dim, use_conf_score=True):
 
     return avg_protein_loss, F1, acc, precision, recall
 
-
+# Entry point of the script
 if __name__ == "__main__":
     main()

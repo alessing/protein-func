@@ -13,9 +13,6 @@ from torch_geometric.utils import is_torch_sparse_tensor, scatter, softmax
 from torch_geometric.utils.sparse import set_sparse_value
 
 
-#TODO: Alec add lora stuff
-
-
 class RGATConv(MessagePassing):
     r"""The relational graph attentional operator from the `"Relational Graph
     Attention Networks" <https://arxiv.org/abs/1904.05811>`_ paper.
@@ -191,7 +188,7 @@ class RGATConv(MessagePassing):
         dropout: float = 0.0,
         edge_dim: Optional[int] = None,
         bias: bool = True,
-        lora_rank=4,
+        lora_rank=4, # LoRA rank parameter, default set to 4
         **kwargs,
     ):
         kwargs.setdefault('aggr', 'add')
@@ -284,14 +281,16 @@ class RGATConv(MessagePassing):
                             self.in_channels // self.num_blocks,
                             (self.heads * self.out_channels) //
                             self.num_blocks))
-        elif lora_rank > 0:
+        elif lora_rank > 0: # Check if LoRA is enabled
             self.lora_rank = lora_rank
+            # LoRA parameters for low-rank adaptation
             self.a = Parameter(
                 torch.empty(self.num_relations, self.in_channels,
                             self.lora_rank))
             self.b = Parameter(
                 torch.empty(self.num_relations, self.lora_rank,
                             self.heads * self.out_channels))
+            # Shared weight matrix for LoRA
             self.w_shared = Parameter(
                 torch.empty(self.in_channels,
                             self.heads * self.out_channels))
@@ -320,6 +319,7 @@ class RGATConv(MessagePassing):
                 glorot(self.weight)
             if hasattr(self, "w_shared"):
                 glorot(self.w_shared)
+                # Initialize LoRA parameters
                 self.a.data = (1e-3)*torch.randn_like(self.a)
                 self.b.data = torch.zeros_like(self.b)
         glorot(self.q)
@@ -409,22 +409,10 @@ class RGATConv(MessagePassing):
             outj = torch.einsum('abcd,acde->ace', x_j, w)
             outj = outj.contiguous().view(-1, self.heads * self.out_channels)
         elif hasattr(self, "lora_rank") > 0:
-            # bsize = 512
-            # out_is = []
-            # out_js = []
-            # for idx in range(0, edge_type.shape[0], bsize):
-            #     idxs = torch.arange(idx, min(idx + bsize, edge_type.shape[0]), device=self.w_shared.device, dtype=int)
-            #     a = torch.index_select(self.a, 0, edge_type[idxs])
-            #     b = torch.index_select(self.b, 0, edge_type[idxs])
-            #     x_i_b = x_i[idxs]
-            #     outi = torch.bmm(torch.bmm(x_i_b.unsqueeze(1), a), b).squeeze(-2) + (x_i_b.unsqueeze(1) @ self.w_shared.unsqueeze(0)).squeeze(-2)
-            #     outj = torch.bmm(torch.bmm(x_i_b.unsqueeze(1), a), b).squeeze(-2) + (x_i_b.unsqueeze(1) @ self.w_shared.unsqueeze(0)).squeeze(-2)
-            #     out_is.append(outi)
-            #     out_js.append(outj)
-            # outi = torch.concat((out_is), dim=0)
-            # outj = torch.concat((out_js), dim=0)
+            # Select LoRA parameters based on edge type
             a = torch.index_select(self.a, 0, edge_type)
             b = torch.index_select(self.b, 0, edge_type)
+            # Compute output using LoRA adaptation
             outi = torch.bmm(torch.bmm(x_i.unsqueeze(1), a), b).squeeze(-2) + (x_i.unsqueeze(1) @ self.w_shared.unsqueeze(0)).squeeze(-2)
             outj = torch.bmm(torch.bmm(x_j.unsqueeze(1), a), b).squeeze(-2) + (x_j.unsqueeze(1) @ self.w_shared.unsqueeze(0)).squeeze(-2)
         else:  # No regularization/Basis-decomposition ========================
