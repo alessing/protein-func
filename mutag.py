@@ -42,7 +42,7 @@ class GNN(nn.Module):
                         out_channels=hidden_dim,
                         dropout=0.1,)
         else:
-            raise ValueError("Unreckognized GNN Type")
+            raise ValueError("Unreckognized GNN Type", gnn_type)
         
         self.mlp = nn.Sequential(nn.Linear(hidden_dim, hidden_dim),
                                  nn.ReLU(),
@@ -68,7 +68,7 @@ class GNN(nn.Module):
 
 
 # Function to create a summary writer for TensorBoard
-def create_summary_writer(lr, hidden_dim, num_layers, lora_dim, num_blocks=None):
+def create_summary_writer(lr, hidden_dim, num_layers, lora_dim, gnn_type, num_blocks=None):
     """
     Create a TensorBoard summary writer.
 
@@ -87,7 +87,7 @@ def create_summary_writer(lr, hidden_dim, num_layers, lora_dim, num_blocks=None)
     """
     os.makedirs("runs", exist_ok=True)
     dt = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
-    log_dir = f"./runs/{dt}_mutag_rgat_lr_{lr}_hid_size_{hidden_dim}_num_layers_{num_layers}_conf_nb_{num_blocks}_lora_{lora_dim}/"
+    log_dir = f"./runs/{dt}_mutag_{gnn_type}_lr_{lr}_hid_size_{hidden_dim}_num_layers_{num_layers}_conf_nb_{num_blocks}_lora_{lora_dim}/"
 
     writer = SummaryWriter(log_dir)
     return writer
@@ -170,7 +170,7 @@ def main(batch_size=64, lr=5e-4, weight_decay=1e-5, epochs=1000, num_layers=4, h
 
     optimizer = optim.Adam(model.parameters(), lr=lr, weight_decay=weight_decay)
 
-    writer = create_summary_writer(lr=lr, hidden_dim=hidden_dim, num_layers=num_layers, lora_dim=lora_dim)
+    writer = create_summary_writer(lr=lr, hidden_dim=hidden_dim, num_layers=num_layers, lora_dim=lora_dim, gnn_type=gnn_type)
 
 
     for epoch in range(epochs):
@@ -197,9 +197,9 @@ if __name__ == '__main__':
     import argparse
     parser = argparse.ArgumentParser()
 
-    parser.add_argument('--gnn_type')
-    parser.add_argument('--lr', type=float)
-    parser.parse_args('--num_layers', type=int)
+    parser.add_argument('--gnn_type', default='rgat')
+    parser.add_argument('--lr', type=float, default=5e-4)
+    parser.add_argument('--num_layers', type=int, default=4)
 
     args = parser.parse_args()
     main(**vars(args))
