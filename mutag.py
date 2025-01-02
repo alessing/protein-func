@@ -22,7 +22,7 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 class GNN(nn.Module):
 
-    def __init__(self, hidden_dim=64, num_layers=4, num_relations=4, lora_dim=8, num_blocks=None, num_bases=None, gnn_type='rgat'):
+    def __init__(self, hidden_dim=64, num_layers=4, dropout=0.1, num_relations=4, lora_dim=8, num_blocks=None, num_bases=None, gnn_type='rgat'):
         super().__init__()
 
         self.gnn_type = gnn_type
@@ -32,7 +32,7 @@ class GNN(nn.Module):
                         hidden_channels=hidden_dim,
                         num_layers=num_layers,
                         out_channels=hidden_dim,
-                        dropout=0.1,
+                        dropout=dropout,
                         num_relations=num_relations,
                         lora_dim=lora_dim,
                         num_blocks=num_blocks,
@@ -42,7 +42,7 @@ class GNN(nn.Module):
                         hidden_channels=hidden_dim,
                         num_layers=num_layers,
                         out_channels=hidden_dim,
-                        dropout=0.1,)
+                        dropout=dropout,)
         else:
             raise ValueError("Unreckognized GNN Type", gnn_type)
         
@@ -147,7 +147,7 @@ def calculate_epoch(model, epoch, loader, opt=None):
 
     return res
 
-def main(batch_size=64, lr=5e-4, weight_decay=1e-5, epochs=1000, num_layers=4, hidden_dim=64, lora_dim=8, num_blocks=None, num_bases=None, gnn_type='rgat'):
+def main(batch_size=64, lr=5e-4, dropout=0.1, weight_decay=1e-5, epochs=1000, num_layers=4, hidden_dim=64, lora_dim=8, num_blocks=None, num_bases=None, gnn_type='rgat'):
     
     dataset = TUDataset(root='data/TUDataset', name='MUTAG')
     num_relations = dataset.num_edge_labels
@@ -164,7 +164,7 @@ def main(batch_size=64, lr=5e-4, weight_decay=1e-5, epochs=1000, num_layers=4, h
     test_loader = DataLoader(test_data, batch_size=batch_size, shuffle=False)
 
 
-    model = GNN(num_layers=num_layers, hidden_dim=hidden_dim, lora_dim=lora_dim, num_blocks=num_blocks, num_bases=num_bases, gnn_type=gnn_type)
+    model = GNN(num_layers=num_layers, hidden_dim=hidden_dim, dropout=dropout, lora_dim=lora_dim, num_blocks=num_blocks, num_bases=num_bases, gnn_type=gnn_type)
     num_params = sum(p.numel() for p in model.parameters())
 
     # Calculate the total number of parameters in the model
@@ -202,16 +202,16 @@ def main(batch_size=64, lr=5e-4, weight_decay=1e-5, epochs=1000, num_layers=4, h
     return res
 
 if __name__ == '__main__':
-
     import argparse
     parser = argparse.ArgumentParser()
 
     parser.add_argument('--gnn_type', default='rgat')
     parser.add_argument('--lr', type=float, default=5e-4)
-    parser.add_argument('--epochs', type=int, default=10)
+    parser.add_argument('--epochs', type=int, default=20)
 
-    parser.add_argument('--num_layers', type=int, default=4)
-    parser.add_argument('--hidden_dim', type=int, default=64)
+    parser.add_argument('--num_layers', type=int, default=6)
+    parser.add_argument('--hidden_dim', type=int, default=128)
+    parser.add_argument('--dropout', type=int, default=0.1)
 
     parser.add_argument('--lora_dim', type=int, default=0)
     parser.add_argument('--num_blocks', type=int, default=None)
@@ -222,5 +222,6 @@ if __name__ == '__main__':
     res = main(**vars(args))
 
     import json
-    with open(f'run_ldim_{args.lora_dim}_blks_{args.num_blocks}_bases_{args.num_bases}_nparams_{res["num_params"]}.json', 'w') as fp:
+    os.makedirs("results", exist_ok=True)
+    with open(f'results/run_ldim_{args.lora_dim}_blks_{args.num_blocks}_bases_{args.num_bases}_nparams_{res["num_params"]}.json', 'w') as fp:
         json.dump(res, fp)
