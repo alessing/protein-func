@@ -22,7 +22,7 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 class GNN(nn.Module):
 
-    def __init__(self, hidden_dim=64, num_layers=4, num_relations=4, lora_dim=8, gnn_type='rgat'):
+    def __init__(self, hidden_dim=64, num_layers=4, num_relations=4, lora_dim=8, num_blocks=None, num_bases=None, gnn_type='rgat'):
         super().__init__()
 
         self.gnn_type = gnn_type
@@ -34,7 +34,9 @@ class GNN(nn.Module):
                         out_channels=hidden_dim,
                         dropout=0.1,
                         num_relations=num_relations,
-                        lora_dim=lora_dim)
+                        lora_dim=lora_dim,
+                        num_blocks=num_blocks,
+                        num_bases=num_bases)
         elif self.gnn_type == 'gat':
             self.gnn = GAT(in_channels=7,
                         hidden_channels=hidden_dim,
@@ -108,7 +110,7 @@ def calculate_epoch(model, epoch, loader, opt=None):
     num_graphs = 0
     num_accurate = 0
 
-    for data in tqdm(loader):
+    for data in loader:
         x = data.x.to(device)
         edge_index = data.edge_index.to(device)
         y = data.y.to(device)
@@ -145,7 +147,7 @@ def calculate_epoch(model, epoch, loader, opt=None):
 
     return res
 
-def main(batch_size=64, lr=5e-4, weight_decay=1e-5, epochs=1000, num_layers=4, hidden_dim=64, lora_dim=8, gnn_type='rgat'):
+def main(batch_size=64, lr=5e-4, weight_decay=1e-5, epochs=1000, num_layers=4, hidden_dim=64, lora_dim=8, num_blocks=None, num_bases=None, gnn_type='rgat'):
     
     dataset = TUDataset(root='data/TUDataset', name='MUTAG')
     num_relations = dataset.num_edge_labels
@@ -162,7 +164,8 @@ def main(batch_size=64, lr=5e-4, weight_decay=1e-5, epochs=1000, num_layers=4, h
     test_loader = DataLoader(test_data, batch_size=batch_size, shuffle=False)
 
 
-    model = GNN(num_layers=num_layers, hidden_dim=hidden_dim, lora_dim=lora_dim, gnn_type=gnn_type)
+    model = GNN(num_layers=num_layers, hidden_dim=hidden_dim, lora_dim=lora_dim, num_blocks=num_blocks, num_bases=num_bases, gnn_type=gnn_type)
+    num_params = sum(p.numel() for p in model.parameters())
 
     # Calculate the total number of parameters in the model
     total_params = sum(p.numel() for p in model.parameters())
@@ -173,7 +176,8 @@ def main(batch_size=64, lr=5e-4, weight_decay=1e-5, epochs=1000, num_layers=4, h
     writer = create_summary_writer(lr=lr, hidden_dim=hidden_dim, num_layers=num_layers, lora_dim=lora_dim, gnn_type=gnn_type)
 
 
-    for epoch in range(epochs):
+    res = {'best_epoch': 0, 'best_val_acc': 0, 'best_test_acc': 0, 'num_params': num_params}
+    for epoch in tqdm(range(epochs)):
 
         train_res = calculate_epoch(model, epoch, train_loader, optimizer)
         for k, v in train_res.items():
@@ -184,13 +188,18 @@ def main(batch_size=64, lr=5e-4, weight_decay=1e-5, epochs=1000, num_layers=4, h
         for k, v in val_res.items():
             print("Val", str(k), v)
             writer.add_scalar(f"Val/{str(k)}", v, epoch)
+            if str(k) == "Accuracy" and res['best_val_acc'] < v:
+                res['best_val_acc'] = v 
+                res['best_epoch'] = epoch
 
         test_res = calculate_epoch(model, epoch, test_loader)
         for k, v in test_res.items():
             print("Test", str(k), v)
             writer.add_scalar(f"Test/{str(k)}", v, epoch)
+            if res['best_epoch'] == epoch and str(k) == "Accuracy":
+                res['best_test_acc'] = v
 
-
+    return res
 
 if __name__ == '__main__':
 
@@ -199,9 +208,19 @@ if __name__ == '__main__':
 
     parser.add_argument('--gnn_type', default='rgat')
     parser.add_argument('--lr', type=float, default=5e-4)
+    parser.add_argument('--epochs', type=int, default=10)
+
     parser.add_argument('--num_layers', type=int, default=4)
+    parser.add_argument('--hidden_dim', type=int, default=64)
+
+    parser.add_argument('--lora_dim', type=int, default=0)
+    parser.add_argument('--num_blocks', type=int, default=None)
+    parser.add_argument('--num_bases', type=int, default=None)
+    
 
     args = parser.parse_args()
-    main(**vars(args))
+    res = main(**vars(args))
 
-    
+    import json
+    with open(f'run_ldim_{args.lora_dim}_blks_{args.num_blocks}_bases_{args.num_bases}_nparams_{res["num_params"]}.json', 'w') as fp:
+        json.dump(res, fp)
