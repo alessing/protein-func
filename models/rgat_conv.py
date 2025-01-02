@@ -428,7 +428,7 @@ class RGATConv(MessagePassing):
         kj = torch.matmul(outj, self.k)
 
         alpha_edge, alpha = 0, torch.tensor([0])
-        if edge_attr is not None:
+        if edge_attr is not None and edge_attr.numel():  # make sure edge_attr is not empty
             if edge_attr.dim() == 1:
                 edge_attr = edge_attr.view(-1, 1)
             assert self.lin_edge is not None, (

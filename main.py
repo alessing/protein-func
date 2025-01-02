@@ -448,7 +448,8 @@ def train(model, optimizer, epoch, loader, feature_dim, use_conf_score=True):
         batch_size = data.ptr.size(0) - 1
 
         # Add negative samples
-        tasks_indices, labels = add_negative_samples(tasks_indices, labels)
+        if not args.MUTAG:
+            tasks_indices, labels = add_negative_samples(tasks_indices, labels)
 
         # Forward pass
         # dictionary mapping b (protein idx) -> (num_tasks_for_protein_b, classes)
@@ -467,10 +468,16 @@ def train(model, optimizer, epoch, loader, feature_dim, use_conf_score=True):
             y_pred = y_pred_dict[b]
 
             preds = torch.argmax(y_pred, dim=-1)
-            TN += torch.logical_and(preds == y, y == 2).sum()
-            TP += torch.logical_and(preds == y, y != 2).sum()
-            FP += torch.logical_and(preds != y, y == 2).sum()
-            FN += torch.logical_and(preds != y, y != 2).sum()
+            if not args.MUTAG:
+                TN += torch.logical_and(preds == y, y == 2).sum()
+                TP += torch.logical_and(preds == y, y != 2).sum()
+                FP += torch.logical_and(preds != y, y == 2).sum()
+                FN += torch.logical_and(preds != y, y != 2).sum()
+            else:
+                TN += torch.logical_and(preds == y, y == 0).sum()
+                TP += torch.logical_and(preds == y, y == 1).sum()
+                FP += torch.logical_and(preds != y, y == 0).sum()
+                FN += torch.logical_and(preds != y, y == 1).sum()
 
             protein_loss = ce_loss(y_pred, y)
             if use_conf_score:
@@ -545,7 +552,8 @@ def val(model, epoch, loader, partition, feature_dim, use_conf_score=True):
             batch_size = data.ptr.size(0) - 1
 
             # Add negative samples
-            tasks_indices, labels = add_negative_samples(tasks_indices, labels)
+            if not args.MUTAG:
+                tasks_indices, labels = add_negative_samples(tasks_indices, labels)
 
             # Forward pass
             # dictionary mapping b (protein idx) -> (num_tasks_for_protein_b, classes)
@@ -563,10 +571,16 @@ def val(model, epoch, loader, partition, feature_dim, use_conf_score=True):
                 y_pred = y_pred_dict[b]
 
                 preds = torch.argmax(y_pred, dim=-1)
-                TN += torch.logical_and(preds == y, y == 2).sum()
-                TP += torch.logical_and(preds == y, y != 2).sum()
-                FP += torch.logical_and(preds != y, y == 2).sum()
-                FN += torch.logical_and(preds != y, y != 2).sum()
+                if not args.MUTAG:
+                    TN += torch.logical_and(preds == y, y == 2).sum()
+                    TP += torch.logical_and(preds == y, y != 2).sum()
+                    FP += torch.logical_and(preds != y, y == 2).sum()
+                    FN += torch.logical_and(preds != y, y != 2).sum()
+                else:
+                    TN += torch.logical_and(preds == y, y == 0).sum()
+                    TP += torch.logical_and(preds == y, y == 1).sum()
+                    FP += torch.logical_and(preds != y, y == 0).sum()
+                    FN += torch.logical_and(preds != y, y == 1).sum()
 
                 protein_loss = ce_loss(y_pred, y)
                 if use_conf_score:
