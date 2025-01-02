@@ -164,7 +164,7 @@ def main(batch_size=64, lr=5e-4, dropout=0.1, weight_decay=1e-5, epochs=1000, nu
     test_loader = DataLoader(test_data, batch_size=batch_size, shuffle=False)
 
 
-    model = GNN(num_layers=num_layers, hidden_dim=hidden_dim, dropout=dropout, lora_dim=lora_dim, num_blocks=num_blocks, num_bases=num_bases, gnn_type=gnn_type)
+    model = GNN(num_layers=num_layers, hidden_dim=hidden_dim, dropout=dropout, lora_dim=lora_dim, num_blocks=num_blocks, num_bases=num_bases, gnn_type=gnn_type).to(device)
     num_params = sum(p.numel() for p in model.parameters())
 
     # Calculate the total number of parameters in the model
