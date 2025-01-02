@@ -22,7 +22,7 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 class GNN(nn.Module):
 
-    def __init__(self, hidden_dim=64, num_layers=4, num_relations=4, lora_dim=4, gnn_type='rgat'):
+    def __init__(self, hidden_dim=64, num_layers=4, num_relations=4, lora_dim=8, gnn_type='rgat'):
         super().__init__()
 
         self.gnn_type = gnn_type
@@ -68,7 +68,7 @@ class GNN(nn.Module):
 
 
 # Function to create a summary writer for TensorBoard
-def create_summary_writer(lr, weight_decay, hidden_dim, num_layers, use_conf, num_blocks, lora_dim, feature_dim):
+def create_summary_writer(lr, hidden_dim, num_layers, lora_dim, num_blocks=None):
     """
     Create a TensorBoard summary writer.
 
@@ -87,7 +87,7 @@ def create_summary_writer(lr, weight_decay, hidden_dim, num_layers, use_conf, nu
     """
     os.makedirs("runs", exist_ok=True)
     dt = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
-    log_dir = f"./runs/{dt}_mutag_rgat_lr_{lr}_wd_{weight_decay}_hid_size_{hidden_dim}_num_layers_{num_layers}_conf_{use_conf}_nb_{num_blocks}_lora_{lora_dim}_fdim_{feature_dim}/"
+    log_dir = f"./runs/{dt}_mutag_rgat_lr_{lr}_hid_size_{hidden_dim}_num_layers_{num_layers}_conf_nb_{num_blocks}_lora_{lora_dim}/"
 
     writer = SummaryWriter(log_dir)
     return writer
@@ -145,7 +145,7 @@ def calculate_epoch(model, epoch, loader, opt=None):
 
     return res
 
-def main(batch_size=64, lr=5e-4, weight_decay=1e-5, epochs=1000):
+def main(batch_size=64, lr=5e-4, weight_decay=1e-5, epochs=1000, num_layers=4, hidden_dim=64, lora_dim=8, gnn_type='rgat'):
     
     dataset = TUDataset(root='data/TUDataset', name='MUTAG')
     num_relations = dataset.num_edge_labels
@@ -162,7 +162,7 @@ def main(batch_size=64, lr=5e-4, weight_decay=1e-5, epochs=1000):
     test_loader = DataLoader(test_data, batch_size=batch_size, shuffle=False)
 
 
-    model = GNN()
+    model = GNN(num_layers=num_layers, hidden_dim=hidden_dim, lora_dim=lora_dim, gnn_type=gnn_type)
 
     # Calculate the total number of parameters in the model
     total_params = sum(p.numel() for p in model.parameters())
@@ -170,24 +170,38 @@ def main(batch_size=64, lr=5e-4, weight_decay=1e-5, epochs=1000):
 
     optimizer = optim.Adam(model.parameters(), lr=lr, weight_decay=weight_decay)
 
+    writer = create_summary_writer(lr=lr, hidden_dim=hidden_dim, num_layers=num_layers, lora_dim=lora_dim)
+
 
     for epoch in range(epochs):
 
         train_res = calculate_epoch(model, epoch, train_loader, optimizer)
         for k, v in train_res.items():
             print("Train", str(k), v)
+            writer.add_scalar(f"Train/{str(k)}", v, epoch)
 
         val_res = calculate_epoch(model, epoch, val_loader)
         for k, v in val_res.items():
             print("Val", str(k), v)
+            writer.add_scalar(f"Val/{str(k)}", v, epoch)
 
         test_res = calculate_epoch(model, epoch, test_loader)
         for k, v in test_res.items():
             print("Test", str(k), v)
+            writer.add_scalar(f"Test/{str(k)}", v, epoch)
 
 
 
 if __name__ == '__main__':
-    main()
+
+    import argparse
+    parser = argparse.ArgumentParser()
+
+    parser.add_argument('--gnn_type')
+    parser.add_argument('--lr', type=float)
+    parser.parse_args('--num_layers', type=int)
+
+    args = parser.parse_args()
+    main(**vars(args))
 
     
