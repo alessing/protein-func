@@ -175,7 +175,7 @@ def load_protein(prot_num, filename, edge_types, struct_feat_scaling=True, debug
                 edge_type = torch.Tensor(edge_type)
                 edge_mask = (edge_feats[1:3].T == edge_type).all(dim=1)
                 edge_feats[0, edge_mask] = i + 1e-6
-        edge_feats = edge_feats[[0, 3]]
+        edge_feats = edge_feats[[0, 3]]  # row one is edge type, row two is distance
 
         # Scale structure features if specified
         if struct_feat_scaling:

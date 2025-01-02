@@ -321,6 +321,7 @@ class FuncGNN(nn.Module):
         num_classes=3,
         dropout=0.1,
         model_type="egnn",
+        num_relations=16,
         lora_dim=0
     ):
         super().__init__()
@@ -356,7 +357,7 @@ class FuncGNN(nn.Module):
                 num_layers=num_layers,
                 out_channels=hidden_dim,
                 dropout=dropout,
-                num_relations=16,
+                num_relations=num_relations,
                 lora_dim=lora_dim
             )
         else:

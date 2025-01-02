@@ -4,11 +4,12 @@ import argparse
 from tqdm import tqdm
 
 from dataloader import create_fake_dataloader, get_dataloader
-from torch_geometric.data import DataLoader
+from torch_geometric.data import DataLoader, Data
 from sklearn.model_selection import train_test_split
 from torch.utils.tensorboard import SummaryWriter
 import datetime
 import os
+from torch_geometric.datasets import TUDataset
 
 from model_wrap import FuncGNN
 
@@ -123,7 +124,7 @@ parser.add_argument(
 parser.add_argument(
     "--data_dir",
     type=str,
-    default="data/processed_data/hdf5_files_d_20",
+    default="data/processed_data/hdf5_files_d_10",
     help="dataset directory to use",
 )
 
@@ -141,6 +142,12 @@ parser.add_argument(
     default=True,
     type=str_to_bool,
     help='Whether to use conf score weighting in loss func'
+)
+
+parser.add_argument(
+    "--MUTAG",
+    action="store_true",
+    help="Whether to use MUTAG dataset instead of default protein dataset.",
 )
 
 # Parse the arguments
@@ -237,6 +244,31 @@ def main():
     num_blocks = None if num_blocks == 0 else num_blocks
     dataset_dir = args.data_dir
 
+
+    # Load the dataset
+    if not args.MUTAG:
+        dataset, dl, edge_types = get_dataloader(dataset_dir, batch_size=batch_size, struct_feat_scaling=True)
+        num_relations = len(edge_types)
+    else:
+        dataset = TUDataset(root='data/TUDataset', name='MUTAG')
+        num_relations = dataset.num_edge_labels
+
+        processed_dataset = []
+        for idx, data in enumerate(dataset):
+            processed_data = Data(
+                edge_index=data.edge_index,
+                atom_types=data.x,
+                structure_features=torch.empty((data.x.size(0), 0)),
+                task_indices=torch.tensor([[idx, 0]], dtype=torch.long),
+                labels=torch.tensor([[idx, data.y.item()]], dtype=torch.long),
+                pos=torch.empty((data.x.size(0), 0)),
+                edge_attr=torch.empty((data.edge_attr.size(0), 0)),  # usually distance, but we don't have coords so it's empty
+                edge_type=torch.argmax(data.edge_attr, dim=1),  # relation type
+                conf_score=torch.tensor([1.0])
+            )
+            processed_dataset.append(processed_data)
+        dataset = processed_dataset
+
     # Initialize the model
     model = FuncGNN(
         num_layers,
@@ -248,15 +280,13 @@ def main():
         position_dim,
         num_classes,
         model_type=model_type,
+        num_relations=num_relations,
         lora_dim=lora_dim
     ).to(device)
 
-    # Load the dataset
-    protein_data, dl, edge_types = get_dataloader(dataset_dir, batch_size=batch_size, struct_feat_scaling=True)
-
     # Split the data into training, validation, and test sets
     train_data, temp_data = train_test_split(
-        protein_data, test_size=0.2, random_state=42
+        dataset, test_size=0.2, random_state=42
     )
     val_data, test_data = train_test_split(temp_data, test_size=0.5, random_state=42)
 
