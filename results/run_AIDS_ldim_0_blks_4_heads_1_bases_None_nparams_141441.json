@@ -1,0 +1,6 @@
+{
+    "best_epoch": 13,
+    "best_val_acc": 0.995,
+    "best_test_acc": 0.98,
+    "num_params": 141441
+}
