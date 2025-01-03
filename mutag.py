@@ -225,8 +225,6 @@ if __name__ == '__main__':
     args = parser.parse_args()
 
     if args.sweep_seeds:
-        res = main(**vars(args))
-    else:
         best_val_accs = []
         best_test_accs = []
 
@@ -239,7 +237,8 @@ if __name__ == '__main__':
         best_test_accs = np.arrat(best_test_accs)
         
         res_sweep = {'best_val_acc_mean': np.mean(best_val_accs), 'best_val_acc_std': np.std(best_val_accs), 'best_test_acc_mean': np.mean(best_test_accs), 'best_test_acc_std': np.std(best_test_accs), 'num_params': res["num_params"]}
-
+    else:
+        res = main(**vars(args))
 
 
 
