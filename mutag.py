@@ -72,7 +72,7 @@ class GNN(nn.Module):
 
 
 # Function to create a summary writer for TensorBoard
-def create_summary_writer(lr, hidden_dim, num_layers, lora_dim, gnn_type, num_blocks=None):
+def create_summary_writer(lr, hidden_dim, num_layers, lora_dim, gnn_type, dataset, num_blocks=None):
     """
     Create a TensorBoard summary writer.
 
@@ -91,7 +91,7 @@ def create_summary_writer(lr, hidden_dim, num_layers, lora_dim, gnn_type, num_bl
     """
     os.makedirs("runs", exist_ok=True)
     dt = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
-    log_dir = f"./runs/{dt}_mutag_{gnn_type}_lr_{lr}_hid_size_{hidden_dim}_num_layers_{num_layers}_conf_nb_{num_blocks}_lora_{lora_dim}/"
+    log_dir = f"./runs/{dt}_{dataset}_{gnn_type}_lr_{lr}_hid_size_{hidden_dim}_num_layers_{num_layers}_conf_nb_{num_blocks}_lora_{lora_dim}/"
 
     writer = SummaryWriter(log_dir)
     return writer
@@ -149,9 +149,9 @@ def calculate_epoch(model, epoch, loader, opt=None):
 
     return res
 
-def main(batch_size=64, lr=5e-4, dropout=0.1, weight_decay=1e-5, epochs=1000, num_layers=4, hidden_dim=64, lora_dim=8, num_blocks=None, heads=1, num_bases=None, gnn_type='rgat', sweep_seeds=False):
+def main(batch_size=64, lr=5e-4, dropout=0.1, weight_decay=1e-5, epochs=1000, num_layers=4, hidden_dim=64, lora_dim=8, num_blocks=None, heads=1, num_bases=None, gnn_type='rgat', dataset='MUTAG', sweep_seeds=False):
     
-    dataset = TUDataset(root='data/TUDataset', name='AIDS', use_node_attr=True)
+    dataset = TUDataset(root='data/TUDataset', name=dataset, use_node_attr=True)
     node_feature_dim = dataset[0].x.shape[1]
     num_relations = dataset.num_edge_labels
     
@@ -187,7 +187,7 @@ def main(batch_size=64, lr=5e-4, dropout=0.1, weight_decay=1e-5, epochs=1000, nu
 
     optimizer = optim.Adam(model.parameters(), lr=lr, weight_decay=weight_decay)
 
-    writer = create_summary_writer(lr=lr, hidden_dim=hidden_dim, num_layers=num_layers, lora_dim=lora_dim, gnn_type=gnn_type)
+    writer = create_summary_writer(lr=lr, hidden_dim=hidden_dim, num_layers=num_layers, lora_dim=lora_dim, gnn_type=gnn_type, dataset=dataset)
 
 
     res = {'best_epoch': 0, 'best_val_acc': 0, 'best_test_acc': 0, 'num_params': num_params}
@@ -224,10 +224,11 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
 
     parser.add_argument('--gnn_type', default='rgat')
+    parser.add_argument('--dataset', default='MUTAG')
     parser.add_argument('--lr', type=float, default=5e-4)
-    parser.add_argument('--epochs', type=int, default=1000)
+    parser.add_argument('--epochs', type=int, default=100)
 
-    parser.add_argument('--num_layers', type=int, default=6)
+    parser.add_argument('--num_layers', type=int, default=4)
     parser.add_argument('--hidden_dim', type=int, default=128)
     parser.add_argument('--dropout', type=int, default=0.1)
 
@@ -252,9 +253,9 @@ if __name__ == '__main__':
         best_test_accs = np.array(best_test_accs)
         
         res_sweep = {'best_val_acc_mean': np.mean(best_val_accs), 'best_val_acc_std': np.std(best_val_accs), 'best_test_acc_mean': np.mean(best_test_accs), 'best_test_acc_std': np.std(best_test_accs), 'num_params': res["num_params"]}
-        with open(f'results/sweep_run_ldim_{args.lora_dim}_blks_{args.num_blocks}_heads_{args.heads}_bases_{args.num_bases}_nparams_{res["num_params"]}.json', 'w') as fp:
+        with open(f'results/sweep_run_{args.dataset}_ldim_{args.lora_dim}_blks_{args.num_blocks}_heads_{args.heads}_bases_{args.num_bases}_nparams_{res["num_params"]}.json', 'w') as fp:
             json.dump(res_sweep, fp)
     else:
         res = main(**vars(args))
-        with open(f'results/run_ldim_{args.lora_dim}_blks_{args.num_blocks}_heads_{args.heads}_bases_{args.num_bases}_nparams_{res["num_params"]}.json', 'w') as fp:
+        with open(f'results/run_{args.dataset}_ldim_{args.lora_dim}_blks_{args.num_blocks}_heads_{args.heads}_bases_{args.num_bases}_nparams_{res["num_params"]}.json', 'w') as fp:
             json.dump(res, fp)
