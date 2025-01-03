@@ -206,6 +206,9 @@ def main(batch_size=64, lr=5e-4, dropout=0.1, weight_decay=1e-5, epochs=1000, nu
 if __name__ == '__main__':
     import argparse
     import numpy as np
+    import json
+    os.makedirs("results", exist_ok=True)
+    
     parser = argparse.ArgumentParser()
 
     parser.add_argument('--gnn_type', default='rgat')
@@ -228,7 +231,7 @@ if __name__ == '__main__':
         best_val_accs = []
         best_test_accs = []
 
-        for seed in [0, 10, 100, 1000]:
+        for seed in [0, 10, 100, 1000, 10000]:
             torch.manual_seed(seed)
             res = main(**vars(args))
             best_val_accs.append(res['best_val_acc'])
@@ -237,12 +240,9 @@ if __name__ == '__main__':
         best_test_accs = np.array(best_test_accs)
         
         res_sweep = {'best_val_acc_mean': np.mean(best_val_accs), 'best_val_acc_std': np.std(best_val_accs), 'best_test_acc_mean': np.mean(best_test_accs), 'best_test_acc_std': np.std(best_test_accs), 'num_params': res["num_params"]}
+        with open(f'results/sweep_run_ldim_{args.lora_dim}_blks_{args.num_blocks}_heads_{args.heads}_bases_{args.num_bases}_nparams_{res["num_params"]}.json', 'w') as fp:
+            json.dump(res_sweep, fp)
     else:
         res = main(**vars(args))
-
-
-
-    import json
-    os.makedirs("results", exist_ok=True)
-    with open(f'results/run_ldim_{args.lora_dim}_blks_{args.num_blocks}_heads_{args.heads}_bases_{args.num_bases}_nparams_{res["num_params"]}.json', 'w') as fp:
-        json.dump(res, fp)
+        with open(f'results/run_ldim_{args.lora_dim}_blks_{args.num_blocks}_heads_{args.heads}_bases_{args.num_bases}_nparams_{res["num_params"]}.json', 'w') as fp:
+            json.dump(res, fp)
