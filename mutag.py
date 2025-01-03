@@ -234,7 +234,7 @@ if __name__ == '__main__':
             best_val_accs.append(res['best_val_acc'])
             best_test_accs.append(res['best_test_acc'])
         best_val_accs = np.array(best_val_accs)
-        best_test_accs = np.arrat(best_test_accs)
+        best_test_accs = np.array(best_test_accs)
         
         res_sweep = {'best_val_acc_mean': np.mean(best_val_accs), 'best_val_acc_std': np.std(best_val_accs), 'best_test_acc_mean': np.mean(best_test_accs), 'best_test_acc_std': np.std(best_test_accs), 'num_params': res["num_params"]}
     else:
