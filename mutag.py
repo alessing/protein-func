@@ -205,6 +205,7 @@ def main(batch_size=64, lr=5e-4, dropout=0.1, weight_decay=1e-5, epochs=1000, nu
 
 if __name__ == '__main__':
     import argparse
+    import numpy as np
     parser = argparse.ArgumentParser()
 
     parser.add_argument('--gnn_type', default='rgat')
@@ -219,10 +220,28 @@ if __name__ == '__main__':
     parser.add_argument('--num_blocks', type=int, default=None)
     parser.add_argument('--heads', type=int, default=1)
     parser.add_argument('--num_bases', type=int, default=None)
-    
+    parser.add_argument('--sweep_seeds', action='store_true')
 
     args = parser.parse_args()
-    res = main(**vars(args))
+
+    if args.sweep_seeds:
+        res = main(**vars(args))
+    else:
+        best_val_accs = []
+        best_test_accs = []
+
+        for seed in [0, 10, 100, 1000]:
+            torch.manual_seed(seed)
+            res = main(**vars(args))
+            best_val_accs.append(res['best_val_acc'])
+            best_test_accs.append(res['best_test_acc'])
+        best_val_accs = np.array(best_val_accs)
+        best_test_accs = np.arrat(best_test_accs)
+        
+        res_sweep = {'best_val_acc_mean': np.mean(best_val_accs), 'best_val_acc_std': np.std(best_val_accs), 'best_test_acc_mean': np.mean(best_test_accs), 'best_test_acc_std': np.std(best_test_accs), 'num_params': res["num_params"]}
+
+
+
 
     import json
     os.makedirs("results", exist_ok=True)
