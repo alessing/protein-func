@@ -22,13 +22,14 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 class GNN(nn.Module):
 
-    def __init__(self, hidden_dim=64, num_layers=4, dropout=0.1, num_relations=4, lora_dim=8, num_blocks=None, num_bases=None, gnn_type='rgat'):
+    def __init__(self, hidden_dim=64, num_layers=4, dropout=0.1, num_relations=4, lora_dim=8, num_blocks=None, heads=1, num_bases=None, gnn_type='rgat'):
         super().__init__()
 
         self.gnn_type = gnn_type
 
         if self.gnn_type == 'rgat':
-            self.gnn = RGAT(in_channels=7,
+            self.linear_proj = nn.Linear(7, hidden_dim)
+            self.gnn = RGAT(in_channels=hidden_dim,
                         hidden_channels=hidden_dim,
                         num_layers=num_layers,
                         out_channels=hidden_dim,
@@ -36,6 +37,7 @@ class GNN(nn.Module):
                         num_relations=num_relations,
                         lora_dim=lora_dim,
                         num_blocks=num_blocks,
+                        heads=heads,
                         num_bases=num_bases)
         elif self.gnn_type == 'gat':
             self.gnn = GAT(in_channels=7,
@@ -56,8 +58,8 @@ class GNN(nn.Module):
                                 )
         
     def forward(self, x, edge_index, edge_type, batch):
-
         if self.gnn_type == 'rgat':
+            x = self.linear_proj(x)
             x = self.gnn(x=x, edge_index=edge_index, batch=batch, edge_type=edge_type)
         elif self.gnn_type == 'gat':
             x = self.gnn(x=x, edge_index=edge_index, batch=batch)
@@ -147,7 +149,7 @@ def calculate_epoch(model, epoch, loader, opt=None):
 
     return res
 
-def main(batch_size=64, lr=5e-4, dropout=0.1, weight_decay=1e-5, epochs=1000, num_layers=4, hidden_dim=64, lora_dim=8, num_blocks=None, num_bases=None, gnn_type='rgat'):
+def main(batch_size=64, lr=5e-4, dropout=0.1, weight_decay=1e-5, epochs=1000, num_layers=4, hidden_dim=64, lora_dim=8, num_blocks=None, heads=1, num_bases=None, gnn_type='rgat'):
     
     dataset = TUDataset(root='data/TUDataset', name='MUTAG')
     num_relations = dataset.num_edge_labels
@@ -164,7 +166,7 @@ def main(batch_size=64, lr=5e-4, dropout=0.1, weight_decay=1e-5, epochs=1000, nu
     test_loader = DataLoader(test_data, batch_size=batch_size, shuffle=False)
 
 
-    model = GNN(num_layers=num_layers, hidden_dim=hidden_dim, dropout=dropout, lora_dim=lora_dim, num_blocks=num_blocks, num_bases=num_bases, gnn_type=gnn_type).to(device)
+    model = GNN(num_layers=num_layers, hidden_dim=hidden_dim, dropout=dropout, lora_dim=lora_dim, num_blocks=num_blocks, heads=1, num_bases=num_bases, gnn_type=gnn_type).to(device)
     num_params = sum(p.numel() for p in model.parameters())
 
     # Calculate the total number of parameters in the model
@@ -207,7 +209,7 @@ if __name__ == '__main__':
 
     parser.add_argument('--gnn_type', default='rgat')
     parser.add_argument('--lr', type=float, default=5e-4)
-    parser.add_argument('--epochs', type=int, default=20)
+    parser.add_argument('--epochs', type=int, default=1000)
 
     parser.add_argument('--num_layers', type=int, default=6)
     parser.add_argument('--hidden_dim', type=int, default=128)
@@ -215,6 +217,7 @@ if __name__ == '__main__':
 
     parser.add_argument('--lora_dim', type=int, default=0)
     parser.add_argument('--num_blocks', type=int, default=None)
+    parser.add_argument('--heads', type=int, default=1)
     parser.add_argument('--num_bases', type=int, default=None)
     
 
@@ -223,5 +226,5 @@ if __name__ == '__main__':
 
     import json
     os.makedirs("results", exist_ok=True)
-    with open(f'results/run_ldim_{args.lora_dim}_blks_{args.num_blocks}_bases_{args.num_bases}_nparams_{res["num_params"]}.json', 'w') as fp:
+    with open(f'results/run_ldim_{args.lora_dim}_blks_{args.num_blocks}_heads_{args.heads}_bases_{args.num_bases}_nparams_{res["num_params"]}.json', 'w') as fp:
         json.dump(res, fp)
