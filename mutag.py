@@ -151,7 +151,7 @@ def calculate_epoch(model, epoch, loader, opt=None):
 
 def main(batch_size=64, lr=5e-4, dropout=0.1, weight_decay=1e-5, epochs=1000, num_layers=4, hidden_dim=64, lora_dim=8, num_blocks=None, heads=1, num_bases=None, gnn_type='rgat', sweep_seeds=False):
     
-    dataset = TUDataset(root='data/TUDataset', name='MUTAG')
+    dataset = TUDataset(root='data/TUDataset', name='AIDS', use_node_attr=True)
     node_feature_dim = dataset[0].x.shape[1]
     num_relations = dataset.num_edge_labels
     
