@@ -253,9 +253,9 @@ if __name__ == '__main__':
         best_test_accs = np.array(best_test_accs)
         
         res_sweep = {'best_val_acc_mean': np.mean(best_val_accs), 'best_val_acc_std': np.std(best_val_accs), 'best_test_acc_mean': np.mean(best_test_accs), 'best_test_acc_std': np.std(best_test_accs), 'num_params': res["num_params"]}
-        with open(f'results/sweep_run_ldim_{args.lora_dim}_blks_{args.num_blocks}_heads_{args.heads}_bases_{args.num_bases}_nparams_{res["num_params"]}.json', 'w') as fp:
+        with open(f'results/sweep_run_{args.dataset}_ldim_{args.lora_dim}_blks_{args.num_blocks}_heads_{args.heads}_bases_{args.num_bases}_nparams_{res["num_params"]}.json', 'w') as fp:
             json.dump(res_sweep, fp)
     else:
         res = main(**vars(args))
-        with open(f'results/run_ldim_{args.lora_dim}_blks_{args.num_blocks}_heads_{args.heads}_bases_{args.num_bases}_nparams_{res["num_params"]}.json', 'w') as fp:
+        with open(f'results/run_{args.dataset}_ldim_{args.lora_dim}_blks_{args.num_blocks}_heads_{args.heads}_bases_{args.num_bases}_nparams_{res["num_params"]}.json', 'w') as fp:
             json.dump(res, fp)
