@@ -22,13 +22,13 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 class GNN(nn.Module):
 
-    def __init__(self, hidden_dim=64, num_layers=4, dropout=0.1, num_relations=4, lora_dim=8, num_blocks=None, heads=1, num_bases=None, gnn_type='rgat'):
+    def __init__(self, hidden_dim=64, num_layers=4, dropout=0.1, num_relations=4, lora_dim=8, num_blocks=None, heads=1, num_bases=None, gnn_type='rgat', node_feature_dim=7):
         super().__init__()
 
         self.gnn_type = gnn_type
 
         if self.gnn_type == 'rgat':
-            self.linear_proj = nn.Linear(7, hidden_dim)
+            self.linear_proj = nn.Linear(node_feature_dim, hidden_dim)
             self.gnn = RGAT(in_channels=hidden_dim,
                         hidden_channels=hidden_dim,
                         num_layers=num_layers,
@@ -40,7 +40,7 @@ class GNN(nn.Module):
                         heads=heads,
                         num_bases=num_bases)
         elif self.gnn_type == 'gat':
-            self.gnn = GAT(in_channels=7,
+            self.gnn = GAT(in_channels=node_feature_dim,
                         hidden_channels=hidden_dim,
                         num_layers=num_layers,
                         out_channels=hidden_dim,
@@ -152,6 +152,7 @@ def calculate_epoch(model, epoch, loader, opt=None):
 def main(batch_size=64, lr=5e-4, dropout=0.1, weight_decay=1e-5, epochs=1000, num_layers=4, hidden_dim=64, lora_dim=8, num_blocks=None, heads=1, num_bases=None, gnn_type='rgat', sweep_seeds=False):
     
     dataset = TUDataset(root='data/TUDataset', name='MUTAG')
+    node_feature_dim = dataset[0].x.shape[1]
     num_relations = dataset.num_edge_labels
     
     # Split the data into training, validation, and test sets
@@ -166,7 +167,18 @@ def main(batch_size=64, lr=5e-4, dropout=0.1, weight_decay=1e-5, epochs=1000, nu
     test_loader = DataLoader(test_data, batch_size=batch_size, shuffle=False)
 
 
-    model = GNN(num_layers=num_layers, hidden_dim=hidden_dim, dropout=dropout, num_relations=num_relations, lora_dim=lora_dim, num_blocks=num_blocks, heads=1, num_bases=num_bases, gnn_type=gnn_type).to(device)
+    model = GNN(
+        num_layers=num_layers,
+        hidden_dim=hidden_dim,
+        dropout=dropout,
+        num_relations=num_relations,
+        lora_dim=lora_dim,
+        num_blocks=num_blocks,
+        heads=1,
+        num_bases=num_bases,
+        gnn_type=gnn_type,
+        node_feature_dim=node_feature_dim
+    ).to(device)
     num_params = sum(p.numel() for p in model.parameters())
 
     # Calculate the total number of parameters in the model
