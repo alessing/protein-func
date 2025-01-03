@@ -149,7 +149,7 @@ def calculate_epoch(model, epoch, loader, opt=None):
 
     return res
 
-def main(batch_size=64, lr=5e-4, dropout=0.1, weight_decay=1e-5, epochs=1000, num_layers=4, hidden_dim=64, lora_dim=8, num_blocks=None, heads=1, num_bases=None, gnn_type='rgat'):
+def main(batch_size=64, lr=5e-4, dropout=0.1, weight_decay=1e-5, epochs=1000, num_layers=4, hidden_dim=64, lora_dim=8, num_blocks=None, heads=1, num_bases=None, gnn_type='rgat', sweep_seeds=False):
     
     dataset = TUDataset(root='data/TUDataset', name='MUTAG')
     num_relations = dataset.num_edge_labels
